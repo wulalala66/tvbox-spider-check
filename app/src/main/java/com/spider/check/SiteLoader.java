@@ -8,8 +8,6 @@ import com.github.catvod.crawler.SpiderNull;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Crypto;
 import com.github.catvod.utils.Path;
-import com.fongmi.chaquo.Loader;
-import com.fongmi.quickjs.crawler.Loader;
 
 import java.io.File;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,8 +22,8 @@ public class SiteLoader {
     private static volatile SiteLoader instance;
 
     private final ConcurrentHashMap<String, Spider> spiders;
-    private Loader pyLoader;
-    private Loader jsLoader;
+    private com.fongmi.chaquo.Loader pyLoader;
+    private com.fongmi.quickjs.crawler.Loader jsLoader;
     private DexClassLoader jarLoader;
     private String jarKey;
 
@@ -74,7 +72,7 @@ public class SiteLoader {
     private synchronized Spider py(String key, String api) {
         Spider cached = spiders.get(key);
         if (cached != null) return cached;
-        if (pyLoader == null) pyLoader = new Loader();
+        if (pyLoader == null) pyLoader = new com.fongmi.chaquo.Loader();
         Spider spider = pyLoader.spider(api);
         spiders.put(key, spider);
         return spider;
@@ -83,7 +81,7 @@ public class SiteLoader {
     private synchronized Spider js(String key, String api, String jar) {
         Spider cached = spiders.get(key);
         if (cached != null) return cached;
-        if (jsLoader == null) jsLoader = new QjsLoader();
+        if (jsLoader == null) jsLoader = new com.fongmi.quickjs.crawler.Loader();
         Spider spider = jsLoader.spider(api, dex(jar));
         spiders.put(key, spider);
         return spider;
