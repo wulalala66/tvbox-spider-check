@@ -7,8 +7,10 @@ import android.os.Bundle;
 import android.provider.DocumentsContract;
 import android.text.TextUtils;
 import android.view.View;
-import android.widget.Button;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -29,19 +31,35 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends AppCompatActivity {
 
+    /** 并发测活线程数：太快容易被目标站限流，6 是速度与稳定性的平衡点。 */
+    private static final int CHECK_THREADS = 6;
+
+    private static final String[] DEPTH_LABELS = {
+            "① 仅首页（最快）",
+            "② 首页 + 分类",
+            "③ 到详情",
+            "④ 全链路（含播放）"
+    };
+
     private EditText etConfig;
-    private android.widget.TextView tvProgress;
+    private TextView tvProgress;
+    private Spinner spDepth;
     private RecyclerView recycler;
     private SiteAdapter adapter;
     private final ConfigLoader loader = new ConfigLoader();
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private volatile boolean running = false;
+    private volatile boolean stopRequested = false;
 
     private ActivityResultLauncher<String[]> importLauncher;
     private ActivityResultLauncher<String> exportLauncher;
@@ -54,14 +72,29 @@ public class MainActivity extends AppCompatActivity {
         applyWindowInsets();
         etConfig = findViewById(R.id.etConfig);
         tvProgress = findViewById(R.id.tvProgress);
+        spDepth = findViewById(R.id.spDepth);
         recycler = findViewById(R.id.recycler);
+
+        ArrayAdapter<String> depthAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, DEPTH_LABELS);
+        depthAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spDepth.setAdapter(depthAdapter);
+
         adapter = new SiteAdapter();
         adapter.setOnLongClick(this::showSiteDetail);
+        adapter.setOnItemClick(this::checkOne);
         recycler.setLayoutManager(new LinearLayoutManager(this));
         recycler.setAdapter(adapter);
         findViewById(R.id.btnLoad).setOnClickListener(v -> runTask(this::doLoad));
         findViewById(R.id.btnImport).setOnClickListener(v -> importLauncher.launch(new String[]{"application/json", "text/plain", "application/octet-stream", "*/*"}));
         findViewById(R.id.btnRun).setOnClickListener(v -> runTask(this::doRun));
+        findViewById(R.id.btnStop).setOnClickListener(v -> {
+            if (!running) {
+                toast("当前没有测活任务");
+                return;
+            }
+            stopRequested = true;
+            progress("正在停止…（已发出的请求超时后结束）");
+        });
         findViewById(R.id.btnExport).setOnClickListener(v -> doExport());
         findViewById(R.id.btnDiag).setOnClickListener(v -> runTask(this::doDiag));
         findViewById(R.id.btnClear).setOnClickListener(v -> doClear());
@@ -111,6 +144,11 @@ public class MainActivity extends AppCompatActivity {
         void run() throws Exception;
     }
 
+    private int depth() {
+        int p = spDepth.getSelectedItemPosition();
+        return p < 0 ? 1 : p + 1;
+    }
+
     // ---------------- 加载 / 导入 ----------------
 
     private void doLoad() throws Exception {
@@ -158,40 +196,90 @@ public class MainActivity extends AppCompatActivity {
             long js = loader.getSites().stream().filter(s -> s.kindLabel().equals("js")).count();
             long jar = loader.getSites().stream().filter(s -> s.kindLabel().equals("jar")).count();
             long other = n - py - js - jar;
-            tvProgress.setText(String.format("已加载 %d 站点（py=%d js=%d jar=%d 其它=%d）· 点「测活」开始", n, py, js, jar, other));
+            tvProgress.setText(String.format("已加载 %d 站点（py=%d js=%d jar=%d 接口=%d）· 选深度后点「开始测活」", n, py, js, jar, other));
         });
     }
 
     // ---------------- 测活 ----------------
 
     private void doRun() throws Exception {
-        List<Site> sites = loader.getSites();
+        final List<Site> sites = loader.getSites();
         if (sites.isEmpty()) throw new Exception("先加载或导入配置");
+        final int depth = depth();
+        stopRequested = false;
         SiteLoader.get().clear();
-        int total = sites.size();
-        int done = 0;
-        for (Site site : sites) {
-            final int seq = done + 1;
-            runOnUiThread(() -> tvProgress.setText(String.format("测活中 %d/%d · %s", seq, total, site.getName())));
+        long t0 = System.currentTimeMillis();
+        for (Site s : sites) {
+            s.setGrade("?");
+            s.setResult("排队中");
+            s.setDepth(depth);
+            s.setElapsedMs(-1);
+        }
+        final int total = sites.size();
+        runOnUiThread(() -> adapter.notifyDataSetChanged());
+
+        final AtomicInteger done = new AtomicInteger();
+        final AtomicInteger alive = new AtomicInteger();
+        final AtomicInteger failed = new AtomicInteger();
+        ExecutorService checkPool = Executors.newFixedThreadPool(CHECK_THREADS);
+        List<Future<?>> futures = new ArrayList<>();
+        try {
+            for (final Site site : sites) {
+                futures.add(checkPool.submit(() -> {
+                    if (stopRequested) return;
+                    try {
+                        Checker.check(site, depth);
+                    } catch (Throwable e) {
+                        site.setGrade("D");
+                        site.setResult("异常：" + msg(e));
+                    }
+                    int d = done.incrementAndGet();
+                    if ("D".equals(site.getGrade()) || "?".equals(site.getGrade())) failed.incrementAndGet();
+                    else alive.incrementAndGet();
+                    runOnUiThread(() -> {
+                        adapter.notifyItemChanged(site);
+                        tvProgress.setText(String.format("%d/%d · 可用 %d · %s [%s] %s",
+                                d, total, alive.get(), site.getName(), site.getGrade(), site.display()));
+                    });
+                }));
+            }
+        } finally {
+            checkPool.shutdown();
+        }
+        while (!checkPool.isTerminated()) {
+            checkPool.awaitTermination(250, TimeUnit.MILLISECONDS);
+        }
+        double sec = (System.currentTimeMillis() - t0) / 1000.0;
+        String summary = String.format("完成：%d 站 · 可用 %d · 失败 %d · 深度%d · 用时 %.1fs%s",
+                total, alive.get(), failed.get(), depth, sec, stopRequested ? "（已停止）" : "");
+        runOnUiThread(() -> tvProgress.setText(summary));
+    }
+
+    // ---------------- 单站重测 ----------------
+
+    /** 单击列表项：只测这一个站点（用当前选中的深度），不用等整轮跑完。 */
+    private void checkOne(Site site) {
+        final int depth = depth();
+        runTask(() -> {
+            site.setGrade("?");
+            site.setResult("测活中…");
+            site.setDepth(depth);
+            site.setElapsedMs(-1);
+            runOnUiThread(() -> {
+                adapter.notifyItemChanged(site);
+                tvProgress.setText("单测：" + site.getName() + "（深度" + depth + "）");
+            });
             try {
-                Checker.check(site);
+                Checker.check(site, depth);
             } catch (Throwable e) {
                 site.setGrade("D");
                 site.setResult("异常：" + msg(e));
             }
-            done++;
-            final int d = done;
             runOnUiThread(() -> {
                 adapter.notifyItemChanged(site);
-                tvProgress.setText(String.format("%d/%d · %s [%s]", d, total, site.getName(), site.getGrade()));
+                tvProgress.setText(String.format("单测完成：%s [%s] %s", site.getName(), site.getGrade(), site.display()));
             });
-        }
-        long a = sites.stream().filter(s -> s.getGrade().equals("A")).count();
-        long b = sites.stream().filter(s -> s.getGrade().equals("B")).count();
-        long c = sites.stream().filter(s -> s.getGrade().equals("C")).count();
-        long d = sites.stream().filter(s -> s.getGrade().equals("D")).count();
-        String summary = String.format("完成：A=%d B=%d C=%d D=%d · 存活 %d/%d", a, b, c, d, a + b + c, total);
-        runOnUiThread(() -> tvProgress.setText(summary));
+        });
     }
 
     // ---------------- 导出 ----------------
@@ -286,12 +374,15 @@ public class MainActivity extends AppCompatActivity {
                 + "\napi：\n" + site.getApi()
                 + "\n\njar：\n" + (TextUtils.isEmpty(site.getJar0()) ? "（无）" : site.getJar0())
                 + "\n\next：\n" + (TextUtils.isEmpty(site.getExt0()) ? "（无）" : site.getExt0())
-                + "\n\n等级：" + site.getGrade()
+                + "\n\n深度：" + (site.getDepth() == 0 ? "未测" : String.valueOf(site.getDepth()))
+                + "\n等级：" + site.getGrade()
+                + "\n耗时：" + (site.getElapsedMs() < 0 ? "—" : site.getElapsedMs() + "ms")
                 + "\n结果：" + site.getResult();
         new AlertDialog.Builder(this)
                 .setTitle(site.getName())
                 .setMessage(text)
-                .setPositiveButton("知道了", null)
+                .setPositiveButton("重测该站", (dlg, w) -> checkOne(site))
+                .setNegativeButton("知道了", null)
                 .setNeutralButton("复制", (dlg, w) -> {
                     android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                     cm.setPrimaryClip(android.content.ClipData.newPlainText("site", text));

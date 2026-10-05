@@ -12,7 +12,7 @@
         android:background="#E8F0FE"
         android:paddingHorizontal="12dp"
         android:paddingVertical="6dp"
-        android:text="① 填配置地址→「加载」，或「导入」选本地文件   ②「测活」   ③ 长按站点看详情，「导出」存结果"
+        android:text="① 填配置地址→「加载」，或「导入」选本地文件   ② 选测活深度→「开始测活」   ③ 点某站点=单测它，长按=详情，「导出」存结果"
         android:textColor="#1A73E8"
         android:textSize="11sp" />
 
@@ -78,6 +78,31 @@
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="10dp"
         android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="测活深度"
+            android:textColor="#333333"
+            android:textSize="12sp" />
+
+        <Spinner
+            android:id="@+id/spDepth"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="#FFFFFF"
+            android:paddingHorizontal="8dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="10dp"
+        android:layout_marginTop="8dp"
         android:orientation="horizontal">
 
         <Button
@@ -91,12 +116,24 @@
             android:textSize="13sp" />
 
         <Button
+            android:id="@+id/btnStop"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_marginStart="6dp"
+            android:layout_weight="0.9"
+            android:minWidth="0dp"
+            android:paddingHorizontal="0dp"
+            android:text="停止"
+            android:textSize="13sp" />
+
+        <Button
             android:id="@+id/btnExport"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
             android:layout_height="42dp"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:layout_weight="0.9"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="导出"
@@ -107,8 +144,8 @@
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
             android:layout_height="42dp"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:layout_weight="0.9"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="诊断"

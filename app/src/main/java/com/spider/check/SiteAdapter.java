@@ -15,6 +15,7 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.Holder> {
 
     private final List<Site> items = new ArrayList<>();
     private OnLongClick onLongClick;
+    private OnLongClick onItemClick;
 
     public interface OnLongClick {
         void onLong(Site site);
@@ -22,6 +23,11 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.Holder> {
 
     public void setOnLongClick(OnLongClick l) {
         this.onLongClick = l;
+    }
+
+    /** 单击列表项：单独测活该站点。 */
+    public void setOnItemClick(OnLongClick l) {
+        this.onItemClick = l;
     }
 
     public void setItems(List<Site> list) {
@@ -55,7 +61,10 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.Holder> {
         holder.grade.setBackgroundColor(color);
         holder.name.setText(site.getName());
         holder.kind.setText(site.kindLabel());
-        holder.detail.setText(site.getResult());
+        holder.detail.setText(site.display());
+        holder.itemView.setOnClickListener(v -> {
+            if (onItemClick != null) onItemClick.onLong(site);
+        });
         holder.itemView.setOnLongClickListener(v -> {
             if (onLongClick != null) onLongClick.onLong(site);
             return true;

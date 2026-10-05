@@ -22,6 +22,8 @@ public class Site {
     private final String jar;
     private String grade = "?";
     private String result = "—";
+    private long elapsedMs = -1;
+    private int depth = 0;
 
     public Site(String key, String name, int type, String api, String ext, String jar) {
         this.key = key;
@@ -60,6 +62,29 @@ public class Site {
         this.result = result;
     }
 
+    public long getElapsedMs() {
+        return elapsedMs;
+    }
+
+    public void setElapsedMs(long elapsedMs) {
+        this.elapsedMs = elapsedMs;
+    }
+
+    public int getDepth() {
+        return depth;
+    }
+
+    public void setDepth(int depth) {
+        this.depth = depth;
+    }
+
+    /** 结果文本 + 耗时，界面用。 */
+    public String display() {
+        String r = result;
+        if (elapsedMs >= 0) r = r + "  [" + elapsedMs + "ms]";
+        return r;
+    }
+
     public String getJar0() {
         return jar;
     }
@@ -88,8 +113,12 @@ public class Site {
             o.put("name", name);
             o.put("type", type);
             o.put("api", api);
+            o.put("kind", kindLabel());
+            o.put("depth", depth);
             o.put("grade", grade);
+            o.put("elapsedMs", elapsedMs);
             o.put("result", result);
+            if (!TextUtils.isEmpty(jar)) o.put("jar", jar);
             return o;
         } catch (Exception e) {
             return new JSONObject();
