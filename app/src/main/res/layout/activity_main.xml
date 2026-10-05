@@ -12,12 +12,12 @@
         android:layout_marginHorizontal="10dp"
         android:layout_marginTop="8dp"
         android:background="@drawable/bg_hint"
-        android:lineSpacingExtra="2dp"
+        android:lineSpacingExtra="3dp"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp"
-        android:text="① 填配置地址→「加载」，或「导入」选本地文件   ② 选深度→「开始测活」   ③ 点站点=单测它，长按=详情（长按「诊断」=换 UA）   ④ 测完自动按「可用/失败/未测」分组；上面的「可用/失败/未测」按钮可只看某一类，长按「全部」=回到分组视图，「历史」=按接口分别留档"
+        android:paddingVertical="9dp"
+        android:text="① 填配置地址 →「加载」，或「导入」本地配置文件\n② 选测活深度 →「开始测活」（只测勾选的站点）\n③ 点站点=单测它，长按=看详情；测完自动按「可用/失败/未测」分组，「历史」按接口分别留档"
         android:textColor="#0B57D0"
-        android:textSize="11sp" />
+        android:textSize="12sp" />
 
     <EditText
         android:id="@+id/etConfig"
@@ -59,7 +59,7 @@
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
             android:layout_height="44dp"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="7dp"
             android:layout_weight="1"
             android:insetTop="0dp"
             android:insetBottom="0dp"
@@ -73,13 +73,27 @@
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
             android:layout_height="44dp"
-            android:layout_marginStart="8dp"
-            android:layout_weight="0.8"
+            android:layout_marginStart="7dp"
+            android:layout_weight="0.85"
             android:insetTop="0dp"
             android:insetBottom="0dp"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="清空"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btnHistory"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="7dp"
+            android:layout_weight="0.95"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="0dp"
+            android:text="历史"
             android:textSize="14sp" />
     </LinearLayout>
 
@@ -155,7 +169,8 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- 结果分类 / 历史 -->
+    <!-- 结果分类：用 TextView 而不是 Button —— Material 主题会给 Button 的 background 加
+         backgroundTint（主题紫色），把自定义圆角 drawable 整个染成紫底、看不出选中态。 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -163,83 +178,59 @@
         android:layout_marginTop="8dp"
         android:orientation="horizontal">
 
-        <Button
+        <TextView
             android:id="@+id/btnFAll"
             android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_weight="1.05"
+            android:layout_height="40dp"
+            android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="全部"
-            android:textColor="@drawable/chip_text"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="全部 0"
+            android:textColor="@drawable/chip_text_all"
             android:textSize="12sp" />
 
-        <Button
+        <TextView
             android:id="@+id/btnFAlive"
             android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_marginStart="5dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="可用"
-            android:textColor="@drawable/chip_text"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="可用 0"
+            android:textColor="@drawable/chip_text_alive"
             android:textSize="12sp" />
 
-        <Button
+        <TextView
             android:id="@+id/btnFDead"
             android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_marginStart="5dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="失败"
-            android:textColor="@drawable/chip_text"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="失败 0"
+            android:textColor="@drawable/chip_text_dead"
             android:textSize="12sp" />
 
-        <Button
+        <TextView
             android:id="@+id/btnFUntested"
             android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_marginStart="5dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="未测"
-            android:textColor="@drawable/chip_text"
-            android:textSize="12sp" />
-
-        <Button
-            android:id="@+id/btnHistory"
-            android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_marginStart="5dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="历史"
-            android:textColor="@drawable/chip_text"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="未测 0"
+            android:textColor="@drawable/chip_text_un"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -319,12 +310,30 @@
         android:textColor="#3C4043"
         android:textSize="12sp" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="6dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingBottom="12dp" />
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="12dp" />
+
+        <TextView
+            android:id="@+id/tvEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginHorizontal="32dp"
+            android:gravity="center"
+            android:lineSpacingExtra="3dp"
+            android:text="还没有结果\n填配置地址点「加载」，或点「导入」选本地配置文件"
+            android:textColor="#9AA0A6"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </FrameLayout>
 </LinearLayout>

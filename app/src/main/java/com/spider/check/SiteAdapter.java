@@ -40,6 +40,7 @@ public class SiteAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private OnLongClick onLongClick;
     private OnLongClick onItemClick;
     private Runnable onSelectChange;
+    private Runnable onRebuild;
 
     public interface OnLongClick {
         void onLong(Site site);
@@ -62,6 +63,11 @@ public class SiteAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     /** 历史结果页不显示勾选框。 */
     public void setShowCheckbox(boolean b) {
         this.showCheckbox = b;
+    }
+
+    /** 列表重建后回调（用于刷新「这个分类下没有站点」的空态提示）。 */
+    public void setOnRebuild(Runnable r) {
+        this.onRebuild = r;
     }
 
     public int getFilter() {
@@ -125,6 +131,7 @@ public class SiteAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             for (Site s : items) if (match(s)) rows.add(s);
         }
         notifyDataSetChanged();
+        if (onRebuild != null) onRebuild.run();
     }
 
     private void addGroup(int cat) {

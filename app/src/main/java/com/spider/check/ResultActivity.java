@@ -30,7 +30,7 @@ public class ResultActivity extends AppCompatActivity {
 
     private History.Entry entry;
     private SiteAdapter adapter;
-    private Button btnFAll, btnFAlive, btnFDead, btnFUntested;
+    private TextView btnFAll, btnFAlive, btnFDead, btnFUntested;
     private ActivityResultLauncher<String> saveTextLauncher;
     private ActivityResultLauncher<String> saveJsonLauncher;
     private String pendingFormat = "json";
@@ -73,6 +73,7 @@ public class ResultActivity extends AppCompatActivity {
         adapter.setShowCheckbox(false);
         adapter.setOnItemClick(this::showDetail);
         adapter.setOnLongClick(this::showDetail);
+        adapter.setOnRebuild(this::updateEmpty);
         recycler.setAdapter(adapter);
         adapter.setItems(entry.sites);
         adapter.setGrouped(true);
@@ -120,6 +121,28 @@ public class ResultActivity extends AppCompatActivity {
         btnFAlive.setSelected(f == SiteAdapter.FILTER_ALIVE);
         btnFDead.setSelected(f == SiteAdapter.FILTER_DEAD);
         btnFUntested.setSelected(f == SiteAdapter.FILTER_UNTESTED);
+    }
+
+    /** 筛选后这一类为空时给个提示。 */
+    private void updateEmpty() {
+        TextView tvEmpty = findViewById(R.id.tvEmpty);
+        if (tvEmpty == null || adapter == null) return;
+        boolean empty = adapter.getItemCount() == 0;
+        tvEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (!empty) return;
+        switch (adapter.getFilter()) {
+            case SiteAdapter.FILTER_ALIVE:
+                tvEmpty.setText("这次没有「正常可用」的站点");
+                break;
+            case SiteAdapter.FILTER_DEAD:
+                tvEmpty.setText("这次没有「测活失败」的站点 🎉");
+                break;
+            case SiteAdapter.FILTER_UNTESTED:
+                tvEmpty.setText("这次全部站点都测过了");
+                break;
+            default:
+                tvEmpty.setText("这条记录里没有站点");
+        }
     }
 
     private void loadToMain() {

@@ -66,8 +66,9 @@ public class MainActivity extends AppCompatActivity {
     private EditText etConfig;
     private TextView tvProgress;
     private TextView tvSel;
+    private TextView tvEmpty;
     private Button btnSelAll;
-    private Button btnFAll, btnFAlive, btnFDead, btnFUntested;
+    private TextView btnFAll, btnFAlive, btnFDead, btnFUntested;
     private Spinner spDepth;
     private RecyclerView recycler;
     private SiteAdapter adapter;
@@ -113,6 +114,7 @@ public class MainActivity extends AppCompatActivity {
         adapter.setOnLongClick(this::showSiteDetail);
         adapter.setOnItemClick(this::checkOne);
         adapter.setOnSelectChange(this::updateSel);
+        adapter.setOnRebuild(this::updateEmpty);
         recycler.setLayoutManager(new LinearLayoutManager(this));
         recycler.setAdapter(adapter);
         findViewById(R.id.btnLoad).setOnClickListener(v -> runTask(this::doLoad));
@@ -135,6 +137,7 @@ public class MainActivity extends AppCompatActivity {
         btnFAlive = findViewById(R.id.btnFAlive);
         btnFDead = findViewById(R.id.btnFDead);
         btnFUntested = findViewById(R.id.btnFUntested);
+        tvEmpty = findViewById(R.id.tvEmpty);
         btnFAll.setOnClickListener(v -> setFilter(SiteAdapter.FILTER_ALL));
         btnFAlive.setOnClickListener(v -> setFilter(SiteAdapter.FILTER_ALIVE));
         btnFDead.setOnClickListener(v -> setFilter(SiteAdapter.FILTER_DEAD));
@@ -318,6 +321,31 @@ public class MainActivity extends AppCompatActivity {
         btnFAlive.setSelected(f == SiteAdapter.FILTER_ALIVE);
         btnFDead.setSelected(f == SiteAdapter.FILTER_DEAD);
         btnFUntested.setSelected(f == SiteAdapter.FILTER_UNTESTED);
+    }
+
+    /** 列表为空时给一句人话提示，而不是一片空白。 */
+    private void updateEmpty() {
+        if (tvEmpty == null || adapter == null) return;
+        boolean empty = adapter.getItemCount() == 0;
+        tvEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (!empty) return;
+        if (adapter.total() == 0) {
+            tvEmpty.setText("还没有结果\n填配置地址点「加载」，或点「导入」选本地配置文件");
+            return;
+        }
+        switch (adapter.getFilter()) {
+            case SiteAdapter.FILTER_ALIVE:
+                tvEmpty.setText("这一轮没有「正常可用」的站点\n换个测活深度或降低 UA 要求再试");
+                break;
+            case SiteAdapter.FILTER_DEAD:
+                tvEmpty.setText("没有「测活失败」的站点 🎉");
+                break;
+            case SiteAdapter.FILTER_UNTESTED:
+                tvEmpty.setText("全部站点都已经测过了\n点「全部」看结果，或点「只选未测/失败」重测失败的");
+                break;
+            default:
+                tvEmpty.setText("列表是空的");
+        }
     }
 
     // ---------------- 存储权限（本地 py/js/jar 源需要） ----------------

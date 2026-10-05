@@ -73,67 +73,59 @@
         android:layout_marginTop="8dp"
         android:orientation="horizontal">
 
-        <Button
+        <TextView
             android:id="@+id/btnFAll"
             android:layout_width="0dp"
-            android:layout_height="38dp"
+            android:layout_height="40dp"
             android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="全部"
-            android:textColor="@drawable/chip_text"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="全部 0"
+            android:textColor="@drawable/chip_text_all"
             android:textSize="12sp" />
 
-        <Button
+        <TextView
             android:id="@+id/btnFAlive"
             android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_marginStart="5dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="可用"
-            android:textColor="@drawable/chip_text"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="可用 0"
+            android:textColor="@drawable/chip_text_alive"
             android:textSize="12sp" />
 
-        <Button
+        <TextView
             android:id="@+id/btnFDead"
             android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_marginStart="5dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="失败"
-            android:textColor="@drawable/chip_text"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="失败 0"
+            android:textColor="@drawable/chip_text_dead"
             android:textSize="12sp" />
 
-        <Button
+        <TextView
             android:id="@+id/btnFUntested"
             android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_marginStart="5dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="2dp"
-            android:stateListAnimator="@null"
-            android:text="未测"
-            android:textColor="@drawable/chip_text"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="未测 0"
+            android:textColor="@drawable/chip_text_un"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -150,12 +142,30 @@
         android:text="载入到主界面（接着续测 / 重测）"
         android:textSize="13sp" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="4dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingBottom="12dp" />
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="12dp" />
+
+        <TextView
+            android:id="@+id/tvEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginHorizontal="32dp"
+            android:gravity="center"
+            android:lineSpacingExtra="3dp"
+            android:text="这一类里没有站点"
+            android:textColor="#9AA0A6"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </FrameLayout>
 </LinearLayout>
