@@ -36,6 +36,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:text="站点名"
+            android:textColor="#212121"
             android:textSize="14sp"
             android:textStyle="bold" />
 

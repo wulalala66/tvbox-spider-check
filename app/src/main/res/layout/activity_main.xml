@@ -26,6 +26,7 @@
         android:hint="配置地址（http://… 支持 2423 加密）"
         android:imeOptions="actionDone"
         android:inputType="textUri"
+        android:textColor="#212121"
         android:maxLines="1"
         android:paddingHorizontal="10dp"
         android:textSize="13sp" />
@@ -124,6 +125,7 @@
         android:paddingHorizontal="10dp"
         android:paddingVertical="6dp"
         android:text="就绪 · 加载配置后点「开始测活」"
+        android:textColor="#333333"
         android:textSize="12sp" />
 
     <androidx.recyclerview.widget.RecyclerView
