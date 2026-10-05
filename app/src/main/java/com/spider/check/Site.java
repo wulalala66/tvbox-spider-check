@@ -68,6 +68,14 @@ public class Site {
         return ext;
     }
 
+    public String kindLabel() {
+        String a = api.toLowerCase();
+        if (a.contains(".py")) return "py";
+        if (a.contains(".js")) return "js";
+        if (api.startsWith("csp_")) return "jar";
+        return "t" + type;
+    }
+
     public boolean isSpider() {
         String a = api.toLowerCase();
         return a.contains(".py") || a.contains(".js") || api.startsWith("csp_");

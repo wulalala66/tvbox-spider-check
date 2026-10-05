@@ -1,20 +1,29 @@
 package com.spider.check;
 
 import android.annotation.SuppressLint;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -26,6 +35,9 @@ public class MainActivity extends AppCompatActivity {
     private SiteAdapter adapter;
     private final ConfigLoader loader = new ConfigLoader();
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
+    private volatile boolean running = false;
+
+    private ActivityResultLauncher<String[]> importLauncher;
 
     @SuppressLint("SetTextI18n")
     @Override
@@ -39,19 +51,33 @@ public class MainActivity extends AppCompatActivity {
         recycler.setLayoutManager(new LinearLayoutManager(this));
         recycler.setAdapter(adapter);
         Button btnLoad = findViewById(R.id.btnLoad);
+        Button btnImport = findViewById(R.id.btnImport);
         Button btnRun = findViewById(R.id.btnRun);
         Button btnExport = findViewById(R.id.btnExport);
         btnLoad.setOnClickListener(v -> runTask(this::doLoad));
         btnRun.setOnClickListener(v -> runTask(this::doRun));
         btnExport.setOnClickListener(v -> runTask(this::doExport));
+        // 本地导入：SAF 打开 .json/.txt 配置文件
+        importLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+            if (uri == null) return;
+            runTask(() -> doImport(uri));
+        });
+        btnImport.setOnClickListener(v -> importLauncher.launch(new String[]{"*/*"}));
     }
 
     private void runTask(Task task) {
+        if (running) {
+            toast("有任务进行中，请稍候");
+            return;
+        }
+        setBusy(true);
         pool.execute(() -> {
             try {
                 task.run();
             } catch (Throwable e) {
-                runOnUiThread(() -> Toast.makeText(this, msg(e), Toast.LENGTH_LONG).show());
+                fail(e);
+            } finally {
+                setBusy(false);
             }
         });
     }
@@ -62,37 +88,57 @@ public class MainActivity extends AppCompatActivity {
 
     private void doLoad() throws Exception {
         String url = etConfig.getText().toString().trim();
-        if (url.isEmpty()) throw new Exception("请输入配置地址");
+        if (url.isEmpty()) throw new Exception("请输入配置地址，或点「导入」选本地文件");
         progress("拉取配置…");
         int n = loader.load(url);
+        loaded(n);
+    }
+
+    private void doImport(Uri uri) throws Exception {
+        progress("读取本地文件…");
+        String text = readText(uri);
+        int n = loader.loadText(text, "");
+        loaded(n);
+    }
+
+    private void loaded(int n) {
         runOnUiThread(() -> {
             adapter.setItems(loader.getSites());
-            tvProgress.setText(String.format("已加载 %d 个站点，点击「开始测活」", n));
+            long py = loader.getSites().stream().filter(s -> s.kindLabel().equals("py")).count();
+            long js = loader.getSites().stream().filter(s -> s.kindLabel().equals("js")).count();
+            long jar = loader.getSites().stream().filter(s -> s.kindLabel().equals("jar")).count();
+            tvProgress.setText(String.format("已加载 %d 站点（py=%d js=%d jar=%d），点「测活」开始", n, py, js, jar));
         });
     }
 
     private void doRun() throws Exception {
-        if (loader.getSites().isEmpty()) throw new Exception("先加载配置");
-        java.util.List<Site> sites = new java.util.ArrayList<>(loader.getSites());
+        List<Site> sites = loader.getSites();
+        if (sites.isEmpty()) throw new Exception("先加载或导入配置");
         int total = sites.size();
-        for (int i = 0; i < total; i++) {
-            Site site = sites.get(i);
-            int idx = i + 1;
-            runOnUiThread(() -> tvProgress.setText(String.format("测活中 %d/%d %s", idx, total, site.getName())));
+        int[] done = {0};
+        for (Site site : sites) {
+            runOnUiThread(() -> tvProgress.setText(String.format("测活中 %d/%d %s", done[0] + 1, total, site.getName())));
             Checker.check(site);
+            done[0]++;
             runOnUiThread(() -> {
                 adapter.notifyItemChanged(site);
-                tvProgress.setText(String.format("%d/%d 完成", idx, total));
+                tvProgress.setText(String.format("%d/%d 完成", done[0], total));
             });
         }
-        runOnUiThread(() -> tvProgress.setText("全部完成，可点击「导出结果」"));
+        long a = sites.stream().filter(s -> s.getGrade().equals("A")).count();
+        long b = sites.stream().filter(s -> s.getGrade().equals("B")).count();
+        long c = sites.stream().filter(s -> s.getGrade().equals("C")).count();
+        long d = sites.stream().filter(s -> s.getGrade().equals("D")).count();
+        String summary = String.format("完成：A=%d B=%d C=%d D=%d（存活 %d/%d）", a, b, c, d, a + b + c, total);
+        runOnUiThread(() -> tvProgress.setText(summary));
     }
 
     private void doExport() throws Exception {
-        if (loader.getSites().isEmpty()) throw new Exception("无结果可导出");
+        List<Site> sites = loader.getSites();
+        if (sites.isEmpty()) throw new Exception("无结果可导出");
         StringBuilder sb = new StringBuilder("[");
         boolean first = true;
-        for (Site s : loader.getSites()) {
+        for (Site s : sites) {
             if (!first) sb.append(",");
             sb.append(s.toJson().toString());
             first = false;
@@ -102,11 +148,39 @@ public class MainActivity extends AppCompatActivity {
         try (OutputStreamWriter w = new OutputStreamWriter(new FileOutputStream(out), StandardCharsets.UTF_8)) {
             w.write(sb.toString());
         }
-        runOnUiThread(() -> Toast.makeText(this, "已导出: " + out.getAbsolutePath(), Toast.LENGTH_LONG).show());
+        runOnUiThread(() -> toast("已导出: " + out.getAbsolutePath()));
+    }
+
+    private String readText(Uri uri) throws Exception {
+        try (InputStream in = getContentResolver().openInputStream(uri); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        }
+    }
+
+    private void setBusy(boolean busy) {
+        running = busy;
+        runOnUiThread(() -> {
+            int id = busy ? View.GONE : View.VISIBLE;
+            // 忙碌时不禁用控件（简单可靠），仅靠 running 标志防重入
+        });
     }
 
     private void progress(String text) {
         runOnUiThread(() -> tvProgress.setText(text));
+    }
+
+    private void fail(Throwable e) {
+        runOnUiThread(() -> {
+            tvProgress.setText("出错：" + msg(e));
+            toast(msg(e));
+        });
+    }
+
+    private void toast(String text) {
+        Toast.makeText(this, text, Toast.LENGTH_LONG).show();
     }
 
     private String msg(Throwable e) {

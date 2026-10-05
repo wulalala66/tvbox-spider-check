@@ -8,7 +8,7 @@ import com.github.catvod.utils.Crypto;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.net.URLEncoder;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +18,8 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * TVBox/FongMi 配置拉取与解析：明文 JSON / 2423 加密 / 方案接口（;md5; 前缀）。
+ * TVBox/FongMi 配置拉取与解析：明文 JSON / 2423 加密 / 本地导入。
+ * 相对 api（./py/x.py）相对配置 URL/所在目录解析——FongMi 语义。
  */
 public class ConfigLoader {
 
@@ -33,14 +34,22 @@ public class ConfigLoader {
         return raw;
     }
 
+    /** 远程配置：拉文本后解析。 */
     public int load(String url) throws Exception {
+        if (url.contains(";md5;")) url = url.split(";md5;")[0];
+        String text = OkHttp.string(url);
+        return loadText(text, url);
+    }
+
+    /** 本地/已取回文本解析。baseUrl 用于解析相对 api（http 配置传 URL，本地传 ""）。 */
+    public int loadText(String text, String baseUrl) throws Exception {
         sites.clear();
-        String text = fetch(url);
+        raw = text;
         JSONObject doc = parse(text);
         if (doc == null) throw new Exception("配置解析失败（非 JSON / 非 2423 加密）");
         JSONArray arr = doc.optJSONArray("sites");
         if (arr == null) throw new Exception("配置无 sites 数组");
-        String jar = TextUtils.isEmpty(doc.optString("spider")) ? "" : doc.optString("spider");
+        String topJar = doc.optString("spider", "");
         for (int i = 0; i < arr.length(); i++) {
             JSONObject s = arr.optJSONObject(i);
             if (s == null) continue;
@@ -48,15 +57,32 @@ public class ConfigLoader {
             String api = s.optString("api").trim();
             if (TextUtils.isEmpty(key) || TextUtils.isEmpty(api)) continue;
             if (api.contains("｜")) api = api.split("｜")[0].trim();
-            sites.add(new Site(key, s.optString("name", key), s.optInt("type", 0), api, s.optString("ext", ""), jar));
+            if (api.contains("|")) api = api.split("\\|")[0].trim();
+            // 相对 api：相对配置地址解析（FongMi 对 ./py/x.js 等按配置所在目录取）
+            api = resolve(api, baseUrl);
+            // 站点级 jar 优先，缺省回退顶层 spider
+            String jar = s.optString("jar", "");
+            if (TextUtils.isEmpty(jar)) jar = topJar;
+            jar = resolve(jar, baseUrl);
+            String ext = s.optString("ext", "");
+            sites.add(new Site(key, s.optString("name", key), s.optInt("type", 0), api, ext, jar));
         }
         return sites.size();
     }
 
-    private String fetch(String url) throws Exception {
-        // FongMi 语义：直接 URL 拉文本；VodConfig 里 ;md5; 前缀剥掉
-        if (url.contains(";md5;")) url = url.split(";md5;")[0];
-        return OkHttp.string(url);
+    /** rel 相对 base 解析；无法解析时原样返回。 */
+    private static String resolve(String rel, String base) {
+        if (TextUtils.isEmpty(rel) || TextUtils.isEmpty(base)) return rel;
+        if (!rel.startsWith("./") && !rel.startsWith("../")) return rel;
+        try {
+            URI baseUri = URI.create(base.contains("://") ? base : "file:///" + base);
+            URI out = baseUri.resolve(rel);
+            if (out.getScheme() == null) return rel;
+            String s = out.toString();
+            return s.startsWith("file:///") ? s.substring("file://".length()) : s;
+        } catch (Throwable e) {
+            return rel;
+        }
     }
 
     private JSONObject parse(String text) {
@@ -75,7 +101,6 @@ public class ConfigLoader {
     private static String decrypt(String input) throws Exception {
         String dec = new String(hex2Bytes(input.toLowerCase()), StandardCharsets.UTF_8);
         int start = dec.indexOf("#$");
-        int end = dec.indexOf("#$") + 2;
         String key = dec.substring(2, start);
         while (key.length() < 16) key += "0";
         String iv = dec.substring(dec.length() - 13);

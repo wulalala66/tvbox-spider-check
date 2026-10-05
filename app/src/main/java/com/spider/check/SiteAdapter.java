@@ -44,16 +44,9 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.Holder> {
             default -> 0xFF333333;
         };
         holder.grade.setBackgroundColor(color);
-        holder.name.setText(String.format("%s (%s)", site.getName(), kind(site)));
+        holder.name.setText(site.getName());
+        holder.kind.setText(site.kindLabel());
         holder.detail.setText(site.getResult());
-    }
-
-    private String kind(Site site) {
-        String a = site.getApi().toLowerCase();
-        if (a.contains(".py")) return "py";
-        if (a.contains(".js")) return "js";
-        if (site.getApi().startsWith("csp_")) return "jar";
-        return "t" + 0;
     }
 
     @Override
@@ -62,13 +55,14 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.Holder> {
     }
 
     static class Holder extends RecyclerView.ViewHolder {
-        final TextView grade, name, detail;
+        final TextView grade, name, detail, kind;
 
         Holder(@NonNull View v) {
             super(v);
             grade = v.findViewById(R.id.tvGrade);
             name = v.findViewById(R.id.tvName);
             detail = v.findViewById(R.id.tvDetail);
+            kind = v.findViewById(R.id.tvKind);
         }
     }
 }

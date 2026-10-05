@@ -44,5 +44,6 @@ dependencies {
     implementation project(':quickjs')
     implementation libs.material
     implementation libs.recyclerview
+    implementation libs.appcompat
     coreLibraryDesugaring libs.desugar
 }

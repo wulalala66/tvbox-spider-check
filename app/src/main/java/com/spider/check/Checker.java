@@ -83,7 +83,7 @@ public class Checker {
                     }
                     if (!TextUtils.isEmpty(firstEp)) break;
                 }
-                if (!TextUtils.isEmpty(firstEp) && flagNames.length > 0 && !TextUtils.isEmpty(flags[0])) {
+                if (!TextUtils.isEmpty(firstEp) && flagNames.length > 0 && flagNames[0].length() > 0) {
                     detail = true;
                     String flagName = flagNames[0];
                     try {
@@ -101,11 +101,14 @@ public class Checker {
                     }
                 }
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
+            detail2 = msg(e);
         }
         int score = (home ? 1 : 0) + (category ? 1 : 0) + (detail ? 1 : 0) + (play ? 1 : 0);
         site.setGrade(score >= 4 ? "A" : score == 3 ? "B" : score >= 1 ? "C" : "D");
-        site.setResult(String.format("home%s cat%s det%s(%s) play%s", home ? "✓" : "✗", category ? "✓" : "✗", detail ? "✓" : "✗", firstId, play ? "✓ " + detail2 : "✗"));
+        site.setResult(String.format("home%s cat%s det%s(%s)%s play%s%s", home ? "✓" : "✗", category ? "✓" : "✗",
+                detail ? "✓" : "✗", firstId.length() > 18 ? firstId.substring(0, 18) + "…" : firstId,
+                detail ? "" : "(" + detail2 + ")", play ? "✓ " + detail2 : "✗"));
         destroy(spider);
     }
 

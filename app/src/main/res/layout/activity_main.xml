@@ -2,55 +2,95 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="#FAFAFA">
 
-    <EditText
-        android:id="@+id/etConfig"
+    <!-- 顶部输入区（固定，不随列表滚动） -->
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="8dp"
-        android:hint="配置地址 (TVBox JSON / FongMi 2423)"
-        android:inputType="textUri"
-        android:textSize="13sp" />
+        android:scrollbars="none"
+        android:fillViewport="true">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingHorizontal="8dp">
-
-        <Button
-            android:id="@+id/btnLoad"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="加载配置" />
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:gravity="center_vertical">
 
-        <Button
-            android:id="@+id/btnRun"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="开始测活" />
+            <EditText
+                android:id="@+id/etConfig"
+                android:layout_width="240dp"
+                android:layout_height="40dp"
+                android:hint="配置地址或留空用文件"
+                android:inputType="textUri"
+                android:textSize="13sp"
+                android:maxLines="1"
+                android:imeOptions="actionDone" />
 
-        <Button
-            android:id="@+id/btnExport"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="导出结果" />
-    </LinearLayout>
+            <Button
+                android:id="@+id/btnLoad"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="14dp"
+                android:text="加载"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnImport"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="14dp"
+                android:text="导入"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnRun"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="14dp"
+                android:text="测活"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnExport"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="14dp"
+                android:text="导出"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </HorizontalScrollView>
 
     <TextView
         android:id="@+id/tvProgress"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="8dp"
-        android:text="就绪"
-        android:textSize="13sp" />
+        android:background="#FFFFFF"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp"
+        android:elevation="1dp"
+        android:text="就绪 · 加载配置后点「测活」"
+        android:textSize="12sp" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp" />
 </LinearLayout>
