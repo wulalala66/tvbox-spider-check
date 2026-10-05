@@ -14,6 +14,15 @@ import java.util.List;
 public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.Holder> {
 
     private final List<Site> items = new ArrayList<>();
+    private OnLongClick onLongClick;
+
+    public interface OnLongClick {
+        void onLong(Site site);
+    }
+
+    public void setOnLongClick(OnLongClick l) {
+        this.onLongClick = l;
+    }
 
     public void setItems(List<Site> list) {
         items.clear();
@@ -47,6 +56,10 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.Holder> {
         holder.name.setText(site.getName());
         holder.kind.setText(site.kindLabel());
         holder.detail.setText(site.getResult());
+        holder.itemView.setOnLongClickListener(v -> {
+            if (onLongClick != null) onLongClick.onLong(site);
+            return true;
+        });
     }
 
     @Override

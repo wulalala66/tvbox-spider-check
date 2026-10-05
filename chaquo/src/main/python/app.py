@@ -5,10 +5,32 @@ import json
 
 
 def spider(cache, api):
+    # 本地 py 源：直接按路径加载（导入本地配置时 ./py/x.py 会解析成绝对路径）
+    local = local_path(api)
+    if local:
+        return load(local, api)
     name = os.path.basename(api)
     path = cache + '/' + name
     download(path, api)
-    name = name.split('.')[0]
+    return load(path, api)
+
+
+def local_path(api):
+    if api.startswith('file://'):
+        p = api[len('file://'):]
+    elif api.startswith('/'):
+        p = api
+    else:
+        return None
+    return p if os.path.isfile(p) else None
+
+
+def load(path, api):
+    if not os.path.isfile(path):
+        raise Exception('源文件不存在: ' + api)
+    name = os.path.basename(path).split('.')[0]
+    if not name:
+        name = 'spider'
     return SourceFileLoader(name, path).load_module().Spider()
 
 
