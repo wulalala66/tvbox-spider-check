@@ -1,0 +1,48 @@
+plugins {
+    alias libs.plugins.android.application
+}
+
+android {
+    namespace = 'com.spider.check'
+
+    compileSdk libs.versions.compileSdk.get().toInteger()
+
+    defaultConfig {
+        applicationId "com.spider.check"
+        minSdk libs.versions.minSdk.get().toInteger()
+        targetSdk libs.versions.targetSdk.get().toInteger()
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+        }
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/INDEX.LIST']
+        }
+    }
+
+    lint {
+        abortOnError = false
+    }
+}
+
+dependencies {
+    implementation project(':catvod')
+    implementation project(':chaquo')
+    implementation project(':quickjs')
+    implementation libs.material
+    implementation libs.recyclerview
+    coreLibraryDesugaring libs.desugar
+}
