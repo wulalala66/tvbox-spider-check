@@ -13,6 +13,9 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -44,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        applyWindowInsets();
         etConfig = findViewById(R.id.etConfig);
         tvProgress = findViewById(R.id.tvProgress);
         recycler = findViewById(R.id.recycler);
@@ -63,6 +67,20 @@ public class MainActivity extends AppCompatActivity {
             runTask(() -> doImport(uri));
         });
         btnImport.setOnClickListener(v -> importLauncher.launch(new String[]{"*/*"}));
+    }
+
+    /**
+     * targetSdk 35+ 强制 edge-to-edge：内容会画到状态栏/手势条下面。
+     * 用 WindowInsets 把根布局内缩，避免顶部被状态栏盖住。
+     */
+    private void applyWindowInsets() {
+        View root = findViewById(R.id.root);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return insets;
+        });
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     }
 
     private void runTask(Task task) {
