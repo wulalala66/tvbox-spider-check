@@ -58,13 +58,23 @@ public class MainActivity extends AppCompatActivity {
             "④ 全链路（含播放）"
     };
 
+    /** 从历史页跳回来时用：载入某个接口的结果。 */
+    public static final String ACTION_LOAD_HISTORY = "com.spider.check.LOAD_HISTORY";
+    /** 接口标识（配置地址 / local:文件名）。 */
+    public static final String EXTRA_TAG = "tag";
+
     private EditText etConfig;
     private TextView tvProgress;
     private TextView tvSel;
     private Button btnSelAll;
+    private Button btnFAll, btnFAlive, btnFDead, btnFUntested;
     private Spinner spDepth;
     private RecyclerView recycler;
     private SiteAdapter adapter;
+    /** 本地导入的文件名，作为「接口」标识用。 */
+    private String lastLocalName = "";
+    /** 是否已经弹过存储权限引导（避免反复打扰）。 */
+    private boolean storageAsked = false;
     private final ConfigLoader loader = new ConfigLoader();
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private volatile boolean running = false;
@@ -76,7 +86,11 @@ public class MainActivity extends AppCompatActivity {
     private volatile List<Site> runSites;
 
     private ActivityResultLauncher<String[]> importLauncher;
-    private ActivityResultLauncher<String> exportLauncher;
+    private ActivityResultLauncher<String> saveTextLauncher;
+    private ActivityResultLauncher<String> saveJsonLauncher;
+    /** 正在导出的内容与格式（保存对话框返回时要用来写文件）。 */
+    private History.Entry pendingEntry;
+    private String pendingFormat = "json";
 
     @SuppressLint("SetTextI18n")
     @Override
@@ -116,16 +130,71 @@ public class MainActivity extends AppCompatActivity {
         btnSelAll.setOnClickListener(v -> toggleSelectAll());
         findViewById(R.id.btnSelUntested).setOnClickListener(v -> selectUntested());
 
+        // 结果分类筛选：可用 / 失败 / 未测；长按「全部」回到分组视图
+        btnFAll = findViewById(R.id.btnFAll);
+        btnFAlive = findViewById(R.id.btnFAlive);
+        btnFDead = findViewById(R.id.btnFDead);
+        btnFUntested = findViewById(R.id.btnFUntested);
+        btnFAll.setOnClickListener(v -> setFilter(SiteAdapter.FILTER_ALL));
+        btnFAlive.setOnClickListener(v -> setFilter(SiteAdapter.FILTER_ALIVE));
+        btnFDead.setOnClickListener(v -> setFilter(SiteAdapter.FILTER_DEAD));
+        btnFUntested.setOnClickListener(v -> setFilter(SiteAdapter.FILTER_UNTESTED));
+        btnFAll.setOnLongClickListener(v -> {
+            adapter.setFilter(SiteAdapter.FILTER_ALL);
+            adapter.setGrouped(true);
+            updateFilterUi();
+            toast("已按「可用 / 失败 / 未测」分组显示");
+            return true;
+        });
+        findViewById(R.id.btnHistory).setOnClickListener(v ->
+                startActivity(new Intent(this, HistoryActivity.class)));
+
         importLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
             if (uri == null) return;
             runTask(() -> doImport(uri));
         });
-        exportLauncher = registerForActivityResult(new ActivityResultContracts.CreateDocument("application/json"), uri -> {
+        saveTextLauncher = registerForActivityResult(new ActivityResultContracts.CreateDocument("text/plain"), uri -> {
+            if (uri == null) return;
+            runTask(() -> writeOut(uri));
+        });
+        saveJsonLauncher = registerForActivityResult(new ActivityResultContracts.CreateDocument("application/json"), uri -> {
             if (uri == null) return;
             runTask(() -> writeOut(uri));
         });
 
-        restoreState();
+        if (getIntent() != null && ACTION_LOAD_HISTORY.equals(getIntent().getAction())) {
+            loadHistory(getIntent().getStringExtra(EXTRA_TAG), true);
+        } else {
+            restoreState();
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent != null && ACTION_LOAD_HISTORY.equals(intent.getAction())) {
+            loadHistory(intent.getStringExtra(EXTRA_TAG), true);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 从系统设置页授权回来后刷新状态
+        if (storageAsked && Perm.ok(this)) {
+            storageAsked = false;
+            if (tvProgress != null) tvProgress.setText("已获得存储权限，本地源现在可以读取了 · 点「开始测活」");
+            toast("存储权限已就绪");
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @androidx.annotation.NonNull String[] permissions, @androidx.annotation.NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != 1001) return;
+        boolean ok = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        toast(ok ? "存储权限已就绪" : "未授予存储权限，本地源文件将无法读取");
     }
 
     /**
@@ -174,6 +243,7 @@ public class MainActivity extends AppCompatActivity {
         String url = etConfig.getText().toString().trim();
         if (url.isEmpty()) throw new Exception("请输入配置地址，或点「导入」选本地文件");
         if (!url.startsWith("http")) throw new Exception("地址需以 http 开头");
+        lastLocalName = "";
         progress("拉取配置…（会自动嗅探可用 UA）");
         int n = loader.load(url);
         SiteLoader.get().clear();
@@ -184,6 +254,8 @@ public class MainActivity extends AppCompatActivity {
         progress("读取本地文件…");
         String base = localBase(uri);
         String text = readText(uri);
+        String name = uri.getLastPathSegment();
+        lastLocalName = TextUtils.isEmpty(name) ? "本地文件" : Uri.decode(name);
         try {
             getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (Throwable ignored) {
@@ -210,15 +282,173 @@ public class MainActivity extends AppCompatActivity {
 
     private void loaded(int n, String base) {
         runOnUiThread(() -> {
+            adapter.setGrouped(false);
+            adapter.setFilter(SiteAdapter.FILTER_ALL);
             adapter.setItems(loader.getSites());
             long py = loader.getSites().stream().filter(s -> s.kindLabel().equals("py")).count();
             long js = loader.getSites().stream().filter(s -> s.kindLabel().equals("js")).count();
             long jar = loader.getSites().stream().filter(s -> s.kindLabel().equals("jar")).count();
             long other = n - py - js - jar;
             updateSel();
+            updateFilterUi();
             tvProgress.setText(String.format("已加载 %d 站点（py=%d js=%d jar=%d 接口=%d）· 勾选后点「开始测活」", n, py, js, jar, other));
         });
         save(false);
+        maybeAskStorage();
+    }
+
+    // ---------------- 结果分类筛选 ----------------
+
+    private void setFilter(int f) {
+        adapter.setGrouped(false);
+        adapter.setFilter(f);
+        updateFilterUi();
+    }
+
+    /** 刷新「全部/可用/失败/未测」按钮的计数与选中态。 */
+    private void updateFilterUi() {
+        if (btnFAll == null) return;
+        int[] c = adapter.counts();
+        btnFAll.setText("全部 " + adapter.total());
+        btnFAlive.setText("可用 " + c[Site.CAT_ALIVE]);
+        btnFDead.setText("失败 " + c[Site.CAT_DEAD]);
+        btnFUntested.setText("未测 " + c[Site.CAT_UNTESTED]);
+        int f = adapter.getFilter();
+        btnFAll.setSelected(f == SiteAdapter.FILTER_ALL);
+        btnFAlive.setSelected(f == SiteAdapter.FILTER_ALIVE);
+        btnFDead.setSelected(f == SiteAdapter.FILTER_DEAD);
+        btnFUntested.setSelected(f == SiteAdapter.FILTER_UNTESTED);
+    }
+
+    // ---------------- 存储权限（本地 py/js/jar 源需要） ----------------
+
+    /** 站点列表里是否有本地文件源（file:/… 或 /storage/…）。 */
+    private boolean hasLocalSource() {
+        for (Site s : loader.getSites()) {
+            String a = s.getApi();
+            if (a == null) continue;
+            if (a.startsWith("file:") || a.startsWith("/") || a.startsWith(".")) return true;
+        }
+        return false;
+    }
+
+    /** 本应用专属目录：放这里不需要任何存储权限。 */
+    private String privateDir() {
+        File f = getExternalFilesDir(null);
+        return f == null ? "Android/data/" + getPackageName() + "/files/" : f.getAbsolutePath();
+    }
+
+    /** 配置里有本地源但没权限时，引导授予「所有文件访问权限」。 */
+    private void maybeAskStorage() {
+        if (!hasLocalSource() || Perm.ok(this) || storageAsked) return;
+        runOnUiThread(this::askStoragePermission);
+    }
+
+    private void askStoragePermission() {
+        if (Perm.ok(this)) return;
+        storageAsked = true;
+        if (Perm.needsLegacy()) {
+            requestPermissions(new String[]{Perm.legacyPermission()}, 1001);
+            return;
+        }
+        if (!Perm.canAskAllFiles(this)) {
+            toast("系统没有提供「所有文件访问权限」入口，请把源文件放到：" + privateDir());
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("需要「所有文件访问权限」")
+                .setMessage("配置里的本地源是共享存储下的绝对路径，例如：\nfile:/storage/emulated/0/Download/QQ/tvbox/py/萝卜影视.py\n\nAndroid 11 起用绝对路径读这类文件必须开「所有文件访问权限」，否则本地 py/js/jar 源一律会报「文件不存在 / 无法读取」。\n\n点「去授权」后，在列表里找到「源测活」，打开「允许访问所有文件」开关（以前开关是灰的，是因为应用没声明这个权限，现在已经声明了）。\n\n不想给这个权限的话，把源文件复制到这里即可，此目录免权限：\n" + privateDir())
+                .setPositiveButton("去授权", (d, w) -> askStorageNow())
+                .setNeutralButton("复制目录", (d, w) -> {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("dir", privateDir()));
+                    toast("已复制目录路径");
+                })
+                .setNegativeButton("稍后", null)
+                .show();
+    }
+
+    private void askStorageNow() {
+        try {
+            startActivity(Perm.appIntent(this));
+        } catch (Throwable t) {
+            try {
+                startActivity(Perm.allIntent());
+            } catch (Throwable t2) {
+                toast("打不开设置页：" + msg(t2));
+            }
+        }
+    }
+
+    // ---------------- 测活历史（按接口分组，互不覆盖） ----------------
+
+    /** 当前接口标识：配置地址，或 local:本地文件名。 */
+    private String tag() {
+        String url = etConfig == null ? "" : etConfig.getText().toString().trim();
+        if (!TextUtils.isEmpty(url)) return url;
+        String body = historyBody();
+        if (!TextUtils.isEmpty(body)) return body;
+        return "本地导入";
+    }
+
+    private String historyBody() {
+        return TextUtils.isEmpty(lastLocalName) ? "" : "local:" + lastLocalName;
+    }
+
+    /** 展示用标题：域名或文件名。 */
+    private String title() {
+        String url = etConfig == null ? "" : etConfig.getText().toString().trim();
+        if (!TextUtils.isEmpty(url)) {
+            try {
+                String host = Uri.parse(url).getHost();
+                if (!TextUtils.isEmpty(host)) return host;
+            } catch (Throwable ignored) {
+            }
+            return url;
+        }
+        return TextUtils.isEmpty(lastLocalName) ? "本地导入" : lastLocalName;
+    }
+
+    /** 把当前结果写进该接口的历史（同一个接口只保留最新一条）。 */
+    private void saveHistory(boolean interrupted) {
+        try {
+            List<Site> all = new ArrayList<>(loader.getSites());
+            if (all.isEmpty()) return;
+            int tested = 0;
+            for (Site s : all) if (s.category() != Site.CAT_UNTESTED) tested++;
+            if (tested == 0 && !interrupted) return;   // 一个都没测过就别留空档
+            History.save(this, tag(), title(), depth(), interrupted, all);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 载入某个接口的历史结果到主界面（可继续测活）。 */
+    private void loadHistory(String tag, boolean tip) {
+        History.Entry e = History.get(this, tag);
+        if (e == null || e.sites.isEmpty()) {
+            if (tip) toast("找不到这条历史记录");
+            return;
+        }
+        loader.getSites().clear();
+        loader.getSites().addAll(e.sites);
+        if (tag != null && tag.startsWith("http")) etConfig.setText(tag);
+        else if (tag != null && tag.startsWith("local:")) lastLocalName = tag.substring("local:".length());
+        spDepth.setSelection(Math.max(0, Math.min(e.depth - 1, DEPTH_LABELS.length - 1)));
+        // 默认勾选「失败 + 未测」的站点，方便直接续测
+        for (Site s : e.sites) s.setSelected(s.category() != Site.CAT_ALIVE);
+        SiteLoader.get().clear();
+        adapter.setFilter(SiteAdapter.FILTER_ALL);
+        adapter.setGrouped(true);
+        adapter.setItems(loader.getSites());
+        updateSel();
+        updateFilterUi();
+        tvProgress.setText(String.format("历史结果（%s · %s · 深度%s）· 共 %d 站：可用 %d · 失败 %d · 未测 %d",
+                e.displayTitle(), e.savedAt, HistoryAdapter.depthName(e.depth), e.total,
+                e.count(Site.CAT_ALIVE), e.count(Site.CAT_DEAD), e.count(Site.CAT_UNTESTED)));
+    }
+
+    private void saveHistory() {
+        saveHistory(false);
     }
 
     // ---------------- 勾选 ----------------
@@ -268,6 +498,11 @@ public class MainActivity extends AppCompatActivity {
         for (Site s : all) if (s.isSelected()) sites.add(s);
         if (sites.isEmpty()) throw new Exception("没有勾选任何站点：点站点左侧复选框，或点「全选」");
         final int depth = depth();
+        // 本地 py/js/jar 源在共享存储里：没「所有文件访问权限」读不了，先引导授权
+        if (hasLocalSource() && !Perm.ok(this)) {
+            runOnUiThread(this::askStoragePermission);
+            throw new Exception("本地源需要「所有文件访问权限」：正在打开设置页，打开开关后再点「开始测活」");
+        }
         stopRequested = false;
         runSites = sites;
         SiteLoader.get().clear();
@@ -280,8 +515,11 @@ public class MainActivity extends AppCompatActivity {
         }
         final int total = sites.size();
         runOnUiThread(() -> {
-            adapter.notifyDataSetChanged();
+            // 测活进行中先平铺（顺序稳定，不会因为状态变化到处跳），跑完再自动分组
+            adapter.setFilter(SiteAdapter.FILTER_ALL);
+            adapter.setGrouped(false);
             updateSel();
+            updateFilterUi();
         });
 
         // jar 源共用同一个 jar：先预热下载，避免 6 个线程抢锁串行等待
@@ -317,7 +555,8 @@ public class MainActivity extends AppCompatActivity {
                     if ("D".equals(site.getGrade()) || "?".equals(site.getGrade())) failed.incrementAndGet();
                     else alive.incrementAndGet();
                     runOnUiThread(() -> {
-                        adapter.notifyItemChanged(site);
+                        adapter.refresh(site);
+                        updateFilterUi();
                         if (running && !stopRequested) {
                             tvProgress.setText(String.format("%d/%d · 可用 %d · %s [%s] %s",
                                     d, total, alive.get(), site.getName(), site.getGrade(), site.display()));
@@ -347,9 +586,14 @@ public class MainActivity extends AppCompatActivity {
         String summary = String.format("%s：勾选 %d 站 · 完成 %d · 未测 %d · 可用 %d · 失败 %d · 深度%d · 用时 %.1fs",
                 stopRequested ? "已强制停止" : "完成", total, fTested, fUntested, alive.get(), failed.get(), depth, sec);
         runOnUiThread(() -> {
+            // 跑完自动按「✅ 可用 / ❌ 失败 / ⚪ 未测」分组展示
+            adapter.setFilter(SiteAdapter.FILTER_ALL);
+            adapter.setGrouped(true);
+            updateFilterUi();
             if (!running || !stopRequested) tvProgress.setText(summary);
         });
         save(false);
+        saveHistory(stopRequested);
     }
 
     /** 强制停止：取消在飞任务 + 取消所有 HTTP 请求，不等超时。 */
@@ -378,11 +622,13 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         running = false;
-        adapter.notifyDataSetChanged();
+        adapter.setGrouped(true);
         updateSel();
-        tvProgress.setText(String.format("已强制停止：完成 %d · 未测 %d · 点「开始测活」只测勾选的站点即可续测", done, rest));
+        updateFilterUi();
+        tvProgress.setText(String.format("已强制停止：完成 %d · 未测 %d · 结果已存档；点「开始测活」只测勾选的站点即可续测", done, rest));
         toast("已停止");
         save(false);
+        saveHistory(true);
     }
 
     // ---------------- 单站重测 ----------------
@@ -406,10 +652,12 @@ public class MainActivity extends AppCompatActivity {
                 site.setResult("异常：" + msg(e));
             }
             runOnUiThread(() -> {
-                adapter.notifyItemChanged(site);
+                adapter.setGrouped(true);
+                updateFilterUi();
                 tvProgress.setText(String.format("单测完成：%s [%s] %s", site.getName(), site.getGrade(), site.display()));
             });
             save(false);
+            saveHistory(false);
         });
     }
 
@@ -419,7 +667,12 @@ public class MainActivity extends AppCompatActivity {
     private void restoreState() {
         pool.execute(() -> {
             final JSONObject st = Store.load(this);
-            if (st == null) return;
+            if (st == null) {
+                // 没有未完成的任务 → 直接把最近一次测活结果回显出来（清单会一直留着）
+                final History.Entry latest = History.latest(this);
+                if (latest != null) runOnUiThread(() -> loadHistory(latest.tag, false));
+                return;
+            }
             final int depth = Math.max(1, Math.min(st.optInt("depth", 1), DEPTH_LABELS.length));
             final String url = st.optString("url", "");
             final boolean interrupted = st.optBoolean("interrupted", false);
@@ -487,30 +740,106 @@ public class MainActivity extends AppCompatActivity {
             toast("无结果可导出");
             return;
         }
-        exportLauncher.launch("check_result.json");
+        exportMenu(currentEntry());
+    }
+
+    /** 把主界面当前列表包装成一条「历史记录」结构，导出用。 */
+    private History.Entry currentEntry() {
+        History.Entry e = new History.Entry();
+        e.tag = tag();
+        e.title = title();
+        e.ts = System.currentTimeMillis();
+        e.savedAt = History.stamp(e.ts);
+        e.depth = depth();
+        e.interrupted = running && !stopRequested;
+        e.sites = new ArrayList<>(loader.getSites());
+        e.total = e.sites.size();
+        return e;
+    }
+
+    /** 导出菜单：报告比裸 JSON 有用得多。 */
+    private void exportMenu(History.Entry e) {
+        String[] items = {
+                "复制报告（Markdown，可直接粘贴）",
+                "分享报告（Markdown 文本）",
+                "保存报告（Markdown .md）",
+                "保存报告（网页 .html，浏览器打开最好看）",
+                "保存 JSON（已格式化，带汇总字段）"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("导出 · " + e.displayTitle())
+                .setMessage(String.format("共 %d 站：可用 %d · 失败 %d · 未测 %d",
+                        e.total, e.count(Site.CAT_ALIVE), e.count(Site.CAT_DEAD), e.count(Site.CAT_UNTESTED)))
+                .setItems(items, (d, w) -> {
+                    switch (w) {
+                        case 0:
+                            copyReport(e);
+                            break;
+                        case 1:
+                            shareReport(e);
+                            break;
+                        case 2:
+                            saveReport(e, "md");
+                            break;
+                        case 3:
+                            saveReport(e, "html");
+                            break;
+                        default:
+                            saveReport(e, "json");
+                            break;
+                    }
+                })
+                .show();
+    }
+
+    private void copyReport(History.Entry e) {
+        String text = Report.markdown(e);
+        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("report", text));
+        toast("报告已复制（" + text.length() + " 字符）");
+    }
+
+    private void shareReport(History.Entry e) {
+        Intent i = new Intent(Intent.ACTION_SEND);
+        i.setType("text/plain");
+        i.putExtra(Intent.EXTRA_SUBJECT, "源测活报告 · " + e.displayTitle());
+        i.putExtra(Intent.EXTRA_TEXT, Report.markdown(e));
+        try {
+            startActivity(Intent.createChooser(i, "分享测活报告"));
+        } catch (Throwable t) {
+            toast("没有可分享的应用，已改为复制到剪贴板");
+            copyReport(e);
+        }
+    }
+
+    private void saveReport(History.Entry e, String format) {
+        pendingEntry = e;
+        pendingFormat = format;
+        String name = Report.fileName(e, format);
+        if ("json".equals(format)) saveJsonLauncher.launch(name);
+        else saveTextLauncher.launch(name);
     }
 
     private void writeOut(Uri uri) throws Exception {
-        StringBuilder sb = new StringBuilder("[");
-        boolean first = true;
-        for (Site s : loader.getSites()) {
-            if (!first) sb.append(",");
-            sb.append(s.toJson().toString());
-            first = false;
-        }
-        sb.append("]");
+        History.Entry e = pendingEntry != null ? pendingEntry : currentEntry();
+        String format = pendingFormat;
+        String text = Report.build(e, format);
         try (OutputStream out = getContentResolver().openOutputStream(uri, "wt")) {
-            out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            out.write(text.getBytes(StandardCharsets.UTF_8));
         }
-        // 同时留一份到应用目录，方便 adb/文件管理器取
+        // 同时留一份到应用目录，方便文件管理器 / adb 取
         try {
-            File out = new File(getExternalFilesDir(null), "check_result.json");
+            File out = new File(getExternalFilesDir(null), "check_report." + format);
             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
-                fos.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+                fos.write(text.getBytes(StandardCharsets.UTF_8));
             }
         } catch (Throwable ignored) {
         }
-        runOnUiThread(() -> toast("已导出 " + uri.getLastPathSegment()));
+        runOnUiThread(() -> {
+            toast("已导出 " + uri.getLastPathSegment());
+            tvProgress.setText("已导出 " + format.toUpperCase() + "：" + uri.getLastPathSegment()
+                    + "\n应用目录也留了一份：check_report." + format);
+        });
     }
 
     // ---------------- UA 设置 ----------------
@@ -583,6 +912,9 @@ public class MainActivity extends AppCompatActivity {
         }
         int n = loader.getSites().size();
         sb.append("已加载站点：").append(n).append("\n");
+        sb.append("存储权限：").append(Perm.status(this)).append("\n");
+        sb.append("本地源：").append(hasLocalSource() ? "有（需要存储权限）" : "无").append("\n");
+        sb.append("专属目录：").append(privateDir()).append("\n");
         sb.append("UA：").append(Ua.current()).append("\n");
         String cfgUrl = etConfig.getText().toString().trim();
         if (cfgUrl.startsWith("http")) {
@@ -612,15 +944,19 @@ public class MainActivity extends AppCompatActivity {
         loader.getSites().clear();
         SiteLoader.get().clear();
         Store.clear(this);
+        adapter.setGrouped(false);
+        adapter.setFilter(SiteAdapter.FILTER_ALL);
         adapter.setItems(loader.getSites());
         updateSel();
-        tvProgress.setText("已清空（含本地快照）");
+        updateFilterUi();
+        tvProgress.setText("已清空当前列表（历史记录仍保留在「历史」里）");
     }
 
     private void showSiteDetail(Site site) {
         String text = "名称：" + site.getName()
                 + "\nkey：" + site.getKey()
                 + "\n类型：" + site.kindLabel()
+                + "\n分类：" + site.categoryName()
                 + "\napi：\n" + site.getApi()
                 + "\n\njar：\n" + (TextUtils.isEmpty(site.getJar0()) ? "（无）" : site.getJar0())
                 + "\n\next：\n" + (TextUtils.isEmpty(site.getExt0()) ? "（无）" : site.getExt0())

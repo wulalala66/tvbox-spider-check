@@ -15,7 +15,7 @@
         android:lineSpacingExtra="2dp"
         android:paddingHorizontal="12dp"
         android:paddingVertical="8dp"
-        android:text="① 填配置地址→「加载」，或「导入」选本地文件   ② 选测活深度→「开始测活」   ③ 点某站点=单测它，长按=详情，长按「诊断」=换 UA"
+        android:text="① 填配置地址→「加载」，或「导入」选本地文件   ② 选深度→「开始测活」   ③ 点站点=单测它，长按=详情（长按「诊断」=换 UA）   ④ 测完自动按「可用/失败/未测」分组；上面的「可用/失败/未测」按钮可只看某一类，长按「全部」=回到分组视图，「历史」=按接口分别留档"
         android:textColor="#0B57D0"
         android:textSize="11sp" />
 
@@ -152,6 +152,94 @@
             android:gravity="end"
             android:text="已选 0/0"
             android:textColor="#5F6368"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 结果分类 / 历史 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="10dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnFAll"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_weight="1.05"
+            android:background="@drawable/bg_chip"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="2dp"
+            android:stateListAnimator="@null"
+            android:text="全部"
+            android:textColor="@drawable/chip_text"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnFAlive"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="5dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_chip"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="2dp"
+            android:stateListAnimator="@null"
+            android:text="可用"
+            android:textColor="@drawable/chip_text"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnFDead"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="5dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_chip"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="2dp"
+            android:stateListAnimator="@null"
+            android:text="失败"
+            android:textColor="@drawable/chip_text"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnFUntested"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="5dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_chip"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="2dp"
+            android:stateListAnimator="@null"
+            android:text="未测"
+            android:textColor="@drawable/chip_text"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnHistory"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="5dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_chip"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="2dp"
+            android:stateListAnimator="@null"
+            android:text="历史"
+            android:textColor="@drawable/chip_text"
             android:textSize="12sp" />
     </LinearLayout>
 

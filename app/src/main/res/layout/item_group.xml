@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 结果分组标题行：左侧色条 + 分类名 + 数量 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="4dp">
+
+    <View
+        android:id="@+id/gBar"
+        android:layout_width="3dp"
+        android:layout_height="14dp"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/bg_grade" />
+
+    <TextView
+        android:id="@+id/tvGroupTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#2E7D32"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <View
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:id="@+id/tvGroupCount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#8A9099"
+        android:textSize="12sp" />
+</LinearLayout>

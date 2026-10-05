@@ -93,6 +93,31 @@ public class Site {
         return depth > 0 && !TextUtils.isEmpty(grade) && !"?".equals(grade);
     }
 
+    /** 结果分类：正常可用。 */
+    public static final int CAT_ALIVE = 0;
+    /** 结果分类：测活失败。 */
+    public static final int CAT_DEAD = 1;
+    /** 结果分类：未测 / 中断。 */
+    public static final int CAT_UNTESTED = 2;
+
+    /** 结果分类（可用 / 失败 / 未测），列表分组与筛选都用它。 */
+    public int category() {
+        if (!tested()) return CAT_UNTESTED;
+        return "D".equals(grade) ? CAT_DEAD : CAT_ALIVE;
+    }
+
+    /** 分类中文名。 */
+    public String categoryName() {
+        switch (category()) {
+            case CAT_ALIVE:
+                return "正常可用";
+            case CAT_DEAD:
+                return "测活失败";
+            default:
+                return "未测 / 中断";
+        }
+    }
+
     /** 持久化：完整字段（含 ext/jar），用于下次打开 App 离线恢复，无需重新拉配置。 */
     public JSONObject toState() {
         try {
