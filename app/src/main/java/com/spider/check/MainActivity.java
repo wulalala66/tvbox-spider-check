@@ -87,7 +87,7 @@ public class MainActivity extends AppCompatActivity {
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
             return insets;
         });
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     }
 
     private void runTask(Task task) {
