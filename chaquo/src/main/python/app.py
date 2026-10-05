@@ -16,12 +16,21 @@ def spider(cache, api):
 
 
 def local_path(api):
+    # TVBox 配置里本地源有四种常见写法：file:///path、file://path、file:/path、/path。
+    # 早期只认 file://，导致 file:/storage/... 落到 download()，把 api 字符串
+    # 当成 Python 源码写盘 → "SyntaxError: invalid syntax (x.py, line 1)"。
     if api.startswith('file://'):
         p = api[len('file://'):]
+    elif api.startswith('file:/'):
+        p = api[len('file:'):]
     elif api.startswith('/'):
         p = api
     else:
         return None
+    if p.startswith('localhost/'):
+        p = p[len('localhost'):]
+    if not p.startswith('/'):
+        p = '/' + p
     return p if os.path.isfile(p) else None
 
 
@@ -37,6 +46,9 @@ def load(path, api):
 def download(path, api):
     if api.startswith('http'):
         writeFile(path, redirect(api).content)
+    elif api.startswith('file:') or api.startswith('/') or api.startswith('.'):
+        # 本地路径走到这里说明文件不存在：必须明确报错，绝不能把路径当初源码写盘。
+        raise Exception('本地源文件不存在或无法读取: ' + api)
     else:
         writeFile(path, str.encode(api))
 

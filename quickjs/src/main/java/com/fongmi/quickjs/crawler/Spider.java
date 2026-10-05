@@ -1,6 +1,7 @@
 package com.fongmi.quickjs.crawler;
 
 import android.content.Context;
+import android.text.TextUtils;
 
 import com.fongmi.quickjs.bean.Res;
 import com.fongmi.quickjs.method.Console;
@@ -185,10 +186,12 @@ public class Spider extends com.github.catvod.crawler.Spider {
         }
     }
 
-    private void createObj() {
+    private void createObj() throws Exception {
         String spider = "__JS_SPIDER__";
         String global = "globalThis." + spider;
         String content = Module.get().fetch(api);
+        // 源文本取不到时必须明确报错：否则 content.contains 会抛 NPE，掩盖真实原因
+        if (TextUtils.isEmpty(content)) throw new Exception("读取 js 源失败（本地路径不存在或下载内容为空）：" + api);
         cat = content.contains("__jsEvalReturn");
         ctx.evaluateModule(content.replace(spider, global), api);
         ctx.evaluateModule(String.format(Asset.read("js/lib/spider.js"), api));

@@ -26,11 +26,14 @@ public class Module {
         if (name == null) return null;
         String content = cache.get(name);
         if (!TextUtils.isEmpty(content)) return content;
-        if (name.startsWith("http")) cache.put(name, content = OkHttp.string(name));
-        else if (name.startsWith("assets")) cache.put(name, content = Asset.read(name));
-        else if (name.startsWith("lib/")) cache.put(name, content = Asset.read("js/" + name));
-        else if (name.startsWith("file://")) cache.put(name, content = read(name.substring("file://".length())));
-        else if (name.startsWith("/")) cache.put(name, content = read(name));
+        if (name.startsWith("http")) content = OkHttp.string(name);
+        else if (name.startsWith("assets")) content = Asset.read(name);
+        else if (name.startsWith("lib/")) content = Asset.read("js/" + name);
+        else if (name.startsWith("file://")) content = read(name.substring("file://".length()));
+        else if (name.startsWith("file:/")) content = read(name.substring("file:".length()));
+        else if (name.startsWith("/")) content = read(name);
+        // LruCache 不接受 null 值；读取失败时不写缓存，直接返回 null 交给调用方报错
+        if (!TextUtils.isEmpty(content)) cache.put(name, content);
         return content;
     }
 

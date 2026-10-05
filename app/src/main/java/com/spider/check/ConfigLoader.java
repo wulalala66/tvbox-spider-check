@@ -44,10 +44,14 @@ public class ConfigLoader {
     public int loadText(String text, String baseUrl) throws Exception {
         sites.clear();
         raw = text;
-        JSONObject doc = parse(text);
-        if (doc == null) throw new Exception("配置解析失败（非 JSON / 非 2423 加密）");
+        JSONObject doc;
+        try {
+            doc = parse(text);
+        } catch (Exception e) {
+            throw new Exception("配置解析失败：" + msg(e));
+        }
         JSONArray arr = doc.optJSONArray("sites");
-        if (arr == null) throw new Exception("配置无 sites 数组");
+        if (arr == null) throw new Exception("配置无 sites 数组（顶层键：" + keys(doc) + "）");
         String topJar = doc.optString("spider", "");
         for (int i = 0; i < arr.length(); i++) {
             JSONObject s = arr.optJSONObject(i);
@@ -84,27 +88,59 @@ public class ConfigLoader {
         }
     }
 
-    private JSONObject parse(String text) {
-        try {
-            String t = text.trim();
-            if (t.startsWith("{")) return new JSONObject(t);
-            if (t.startsWith("2423")) return new JSONObject(decrypt(t));
-        } catch (Throwable ignored) {
+    private JSONObject parse(String text) throws Exception {
+        String t = text == null ? "" : text.trim();
+        if (t.isEmpty()) throw new Exception("配置内容为空");
+        if (t.startsWith("{")) return new JSONObject(t);
+        if (t.startsWith("2423")) return new JSONObject(decrypt(t));
+        throw new Exception("配置内容无法识别（既不是 JSON 也不是 2423 加密）：" + head(t));
+    }
+
+    private static String head(String t) {
+        String one = t.replaceAll("\\s+", " ");
+        return one.length() > 40 ? one.substring(0, 40) + "…" : one;
+    }
+
+    /** 顶层键列表，便于判断配置结构问题。 */
+    private static String keys(JSONObject o) {
+        StringBuilder sb = new StringBuilder();
+        java.util.Iterator<String> it = o.keys();
+        while (it.hasNext()) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(it.next());
         }
-        return null;
+        return sb.length() == 0 ? "空" : sb.toString();
+    }
+
+    private static String msg(Throwable e) {
+        String m = e.getMessage();
+        return (m == null || m.isEmpty()) ? e.getClass().getSimpleName() : m;
     }
 
     /**
-     * 2423 加密（FongMi Decoder 同源）：hex(key)2324 hex(ct) hex(iv13)，AES-128-CBC，key/iv padEnd '0' 到 16B。
+     * 2423 加密（严格镜像 FongMi Decoder.cbc / 后端 crypto.py）：
+     *   hex 文本 = "2423" + hex(key) + "2324" + ct_hex + hex(iv13)
+     * 关键：密文切片必须打在**原始 hex 文本**上——先把整串 hex 解码再找 "2324" 会得到 -1
+     * （密文字节解码后是乱码），这正是早期版本「配置解析失败」的根因。
      */
     private static String decrypt(String input) throws Exception {
-        String dec = new String(hex2Bytes(input.toLowerCase()), StandardCharsets.UTF_8);
+        String hex = input.replaceAll("\\s+", "").toLowerCase();
+        if (!hex.startsWith("2423")) throw new Exception("不是 2423 格式");
+        if (hex.length() % 2 != 0) throw new Exception("2423 内容长度异常（奇数个 hex 字符）");
+        // key 文本从解码后的字符串里取（Java 侧整体 toLowerCase 后才参与 AES）
+        String dec = new String(hex2Bytes(hex), StandardCharsets.UTF_8).toLowerCase();
         int start = dec.indexOf("#$");
+        if (start < 2) throw new Exception("2423 格式缺少 #$ 分隔符");
         String key = dec.substring(2, start);
         while (key.length() < 16) key += "0";
+        if (key.length() > 16) throw new Exception("2423 key 超过 16 字节");
         String iv = dec.substring(dec.length() - 13);
         while (iv.length() < 16) iv += "0";
-        String data = dec.substring(dec.indexOf("2324") + 4, dec.length() - 26);
+        int sep = hex.indexOf("2324");
+        if (sep < 0) throw new Exception("2423 格式缺少 2324 分隔符");
+        if (sep + 4 > hex.length() - 26) throw new Exception("2423 密文段为空");
+        String data = hex.substring(sep + 4, hex.length() - 26);
+        if (data.isEmpty()) throw new Exception("2423 密文段为空");
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "AES"), new IvParameterSpec(iv.getBytes(StandardCharsets.UTF_8)));
         return new String(cipher.doFinal(hex2Bytes(data)), StandardCharsets.UTF_8);

@@ -9,68 +9,106 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#E8F0FE"
+        android:layout_marginHorizontal="10dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_hint"
+        android:lineSpacingExtra="2dp"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="6dp"
+        android:paddingVertical="8dp"
         android:text="① 填配置地址→「加载」，或「导入」选本地文件   ② 选测活深度→「开始测活」   ③ 点某站点=单测它，长按=详情，长按「诊断」=换 UA"
-        android:textColor="#1A73E8"
+        android:textColor="#0B57D0"
         android:textSize="11sp" />
 
     <EditText
         android:id="@+id/etConfig"
         android:layout_width="match_parent"
-        android:layout_height="46dp"
+        android:layout_height="50dp"
         android:layout_marginHorizontal="10dp"
-        android:layout_marginTop="8dp"
-        android:background="#FFFFFF"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_input"
         android:hint="配置地址（http://… 支持 2423 加密）"
         android:imeOptions="actionDone"
         android:inputType="textUri"
-        android:textColor="#212121"
         android:maxLines="1"
-        android:paddingHorizontal="10dp"
-        android:textSize="13sp" />
+        android:paddingHorizontal="14dp"
+        android:textColor="#1F1F1F"
+        android:textColorHint="#9AA0A6"
+        android:textSize="14sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="10dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="10dp"
         android:orientation="horizontal">
 
         <Button
             android:id="@+id/btnLoad"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="44dp"
             android:layout_weight="1"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="加载"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/btnImport"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="44dp"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="导入"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/btnClear"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="44dp"
             android:layout_marginStart="8dp"
             android:layout_weight="0.8"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="清空"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="10dp"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="测活深度"
+            android:textColor="#5F6368"
+            android:textSize="12sp" />
+
+        <Spinner
+            android:id="@+id/spDepth"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_spinner"
+            android:paddingStart="14dp"
+            android:paddingEnd="40dp"
+            android:popupBackground="@drawable/bg_menu"
+            android:spinnerMode="dropdown" />
     </LinearLayout>
 
     <LinearLayout
@@ -81,21 +119,40 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
+        <Button
+            android:id="@+id/btnSelAll"
+            style="?attr/materialButtonOutlinedStyle"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="测活深度"
-            android:textColor="#333333"
+            android:layout_height="36dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="12dp"
+            android:text="全不选"
             android:textSize="12sp" />
 
-        <Spinner
-            android:id="@+id/spDepth"
+        <Button
+            android:id="@+id/btnSelUntested"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="12dp"
+            android:text="只选未测/失败"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tvSel"
             android:layout_width="0dp"
-            android:layout_height="38dp"
-            android:layout_marginStart="8dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:background="#FFFFFF"
-            android:paddingHorizontal="8dp" />
+            android:gravity="end"
+            android:text="已选 0/0"
+            android:textColor="#5F6368"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <LinearLayout
@@ -108,48 +165,56 @@
         <Button
             android:id="@+id/btnRun"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="44dp"
             android:layout_weight="1.2"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="开始测活"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/btnStop"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="44dp"
             android:layout_marginStart="6dp"
             android:layout_weight="0.9"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="停止"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/btnExport"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="44dp"
             android:layout_marginStart="6dp"
             android:layout_weight="0.9"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="导出"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/btnDiag"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="44dp"
             android:layout_marginStart="6dp"
             android:layout_weight="0.9"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
             android:minWidth="0dp"
             android:paddingHorizontal="0dp"
             android:text="诊断"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
     </LinearLayout>
 
     <TextView
@@ -157,12 +222,13 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="10dp"
-        android:layout_marginTop="8dp"
-        android:background="#FFFFFF"
-        android:paddingHorizontal="10dp"
-        android:paddingVertical="6dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_card"
+        android:lineSpacingExtra="2dp"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="10dp"
         android:text="就绪 · 加载配置后点「开始测活」"
-        android:textColor="#333333"
+        android:textColor="#3C4043"
         android:textSize="12sp" />
 
     <androidx.recyclerview.widget.RecyclerView

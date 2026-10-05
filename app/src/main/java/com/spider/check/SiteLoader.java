@@ -159,8 +159,14 @@ public class SiteLoader {
         if (md5.startsWith("http")) md5 = OkHttp.string(md5).trim();
         String url = texts[0].trim();
         File file;
-        if (url.startsWith("file://") || url.startsWith("/")) {
-            file = new File(url.startsWith("file://") ? url.substring("file://".length()) : url);
+        if (url.startsWith("file://")) {
+            file = new File(url.substring("file://".length()));
+            if (!file.exists()) throw new Exception("本地 jar 不存在：" + file.getAbsolutePath());
+        } else if (url.startsWith("file:/")) {
+            file = new File(url.substring("file:".length()));
+            if (!file.exists()) throw new Exception("本地 jar 不存在：" + file.getAbsolutePath());
+        } else if (url.startsWith("/")) {
+            file = new File(url);
             if (!file.exists()) throw new Exception("本地 jar 不存在：" + file.getAbsolutePath());
         } else if (url.startsWith("http")) {
             file = Path.jar(Crypto.md5(url) + ".jar");
@@ -208,9 +214,25 @@ public class SiteLoader {
         }
     }
 
+    /** 预热：后台提前下载并加载 jar，避免首个站点独自承担下载耗时（失败吞掉，真正报错留给站点自己）。 */
+    public void warmUp(String jar) {
+        try {
+            if (!TextUtils.isEmpty(jar)) dex(jar);
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static String msg(Throwable e) {
-        String m = e.getMessage();
-        if (m == null || m.isEmpty()) return e.getClass().getSimpleName();
-        return m.length() > 200 ? m.substring(0, 200) : m;
+        Throwable t = e;
+        // 展开常见包装异常，把真正的原因（NPE / JSONException …）露出来
+        while (t.getCause() != null && t.getCause() != t
+                && (t instanceof java.util.concurrent.ExecutionException
+                || t instanceof java.util.concurrent.CompletionException
+                || t instanceof java.lang.reflect.InvocationTargetException)) {
+            t = t.getCause();
+        }
+        String m = t.getMessage();
+        if (m == null || m.isEmpty()) return t.getClass().getSimpleName();
+        return m.length() > 300 ? m.substring(0, 300) : m;
     }
 }

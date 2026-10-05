@@ -8,6 +8,7 @@ import android.provider.DocumentsContract;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -26,6 +27,9 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Path;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
@@ -33,6 +37,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -43,6 +48,8 @@ public class MainActivity extends AppCompatActivity {
 
     /** 并发测活线程数：太快容易被目标站限流，6 是速度与稳定性的平衡点。 */
     private static final int CHECK_THREADS = 6;
+    /** 跑动中保存快照的最小间隔（毫秒），避免频繁写盘。 */
+    private static final long SAVE_INTERVAL_MS = 3000;
 
     private static final String[] DEPTH_LABELS = {
             "① 仅首页（最快）",
@@ -53,6 +60,8 @@ public class MainActivity extends AppCompatActivity {
 
     private EditText etConfig;
     private TextView tvProgress;
+    private TextView tvSel;
+    private Button btnSelAll;
     private Spinner spDepth;
     private RecyclerView recycler;
     private SiteAdapter adapter;
@@ -60,6 +69,11 @@ public class MainActivity extends AppCompatActivity {
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private volatile boolean running = false;
     private volatile boolean stopRequested = false;
+
+    /** 本轮测活的线程池 / 任务句柄 —— 强制停止时用来立即取消。 */
+    private volatile ExecutorService checkPool;
+    private final List<Future<?>> inflight = new CopyOnWriteArrayList<>();
+    private volatile List<Site> runSites;
 
     private ActivityResultLauncher<String[]> importLauncher;
     private ActivityResultLauncher<String> exportLauncher;
@@ -72,29 +86,25 @@ public class MainActivity extends AppCompatActivity {
         applyWindowInsets();
         etConfig = findViewById(R.id.etConfig);
         tvProgress = findViewById(R.id.tvProgress);
+        tvSel = findViewById(R.id.tvSel);
+        btnSelAll = findViewById(R.id.btnSelAll);
         spDepth = findViewById(R.id.spDepth);
         recycler = findViewById(R.id.recycler);
 
-        ArrayAdapter<String> depthAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, DEPTH_LABELS);
-        depthAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        ArrayAdapter<String> depthAdapter = new ArrayAdapter<>(this, R.layout.item_spinner, DEPTH_LABELS);
+        depthAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
         spDepth.setAdapter(depthAdapter);
 
         adapter = new SiteAdapter();
         adapter.setOnLongClick(this::showSiteDetail);
         adapter.setOnItemClick(this::checkOne);
+        adapter.setOnSelectChange(this::updateSel);
         recycler.setLayoutManager(new LinearLayoutManager(this));
         recycler.setAdapter(adapter);
         findViewById(R.id.btnLoad).setOnClickListener(v -> runTask(this::doLoad));
         findViewById(R.id.btnImport).setOnClickListener(v -> importLauncher.launch(new String[]{"application/json", "text/plain", "application/octet-stream", "*/*"}));
         findViewById(R.id.btnRun).setOnClickListener(v -> runTask(this::doRun));
-        findViewById(R.id.btnStop).setOnClickListener(v -> {
-            if (!running) {
-                toast("当前没有测活任务");
-                return;
-            }
-            stopRequested = true;
-            progress("正在停止…（已发出的请求超时后结束）");
-        });
+        findViewById(R.id.btnStop).setOnClickListener(v -> doStop());
         findViewById(R.id.btnExport).setOnClickListener(v -> doExport());
         findViewById(R.id.btnDiag).setOnClickListener(v -> runTask(this::doDiag));
         // 长按「诊断」= UA 设置（部分接口校验 User-Agent）
@@ -103,6 +113,8 @@ public class MainActivity extends AppCompatActivity {
             return true;
         });
         findViewById(R.id.btnClear).setOnClickListener(v -> doClear());
+        btnSelAll.setOnClickListener(v -> toggleSelectAll());
+        findViewById(R.id.btnSelUntested).setOnClickListener(v -> selectUntested());
 
         importLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
             if (uri == null) return;
@@ -112,6 +124,8 @@ public class MainActivity extends AppCompatActivity {
             if (uri == null) return;
             runTask(() -> writeOut(uri));
         });
+
+        restoreState();
     }
 
     /**
@@ -160,7 +174,7 @@ public class MainActivity extends AppCompatActivity {
         String url = etConfig.getText().toString().trim();
         if (url.isEmpty()) throw new Exception("请输入配置地址，或点「导入」选本地文件");
         if (!url.startsWith("http")) throw new Exception("地址需以 http 开头");
-        progress("拉取配置…");
+        progress("拉取配置…（会自动嗅探可用 UA）");
         int n = loader.load(url);
         SiteLoader.get().clear();
         loaded(n, url);
@@ -201,17 +215,61 @@ public class MainActivity extends AppCompatActivity {
             long js = loader.getSites().stream().filter(s -> s.kindLabel().equals("js")).count();
             long jar = loader.getSites().stream().filter(s -> s.kindLabel().equals("jar")).count();
             long other = n - py - js - jar;
-            tvProgress.setText(String.format("已加载 %d 站点（py=%d js=%d jar=%d 接口=%d）· 选深度后点「开始测活」", n, py, js, jar, other));
+            updateSel();
+            tvProgress.setText(String.format("已加载 %d 站点（py=%d js=%d jar=%d 接口=%d）· 勾选后点「开始测活」", n, py, js, jar, other));
         });
+        save(false);
+    }
+
+    // ---------------- 勾选 ----------------
+
+    /** 刷新「已选 n/m」与全选按钮文案。 */
+    private void updateSel() {
+        int total = loader.getSites().size();
+        int sel = 0;
+        for (Site s : loader.getSites()) if (s.isSelected()) sel++;
+        tvSel.setText("已选 " + sel + "/" + total);
+        btnSelAll.setText(total > 0 && sel == total ? "全不选" : "全选");
+    }
+
+    private void toggleSelectAll() {
+        List<Site> sites = loader.getSites();
+        if (sites.isEmpty()) return;
+        int sel = 0;
+        for (Site s : sites) if (s.isSelected()) sel++;
+        boolean target = sel != sites.size();
+        for (Site s : sites) s.setSelected(target);
+        adapter.notifyDataSetChanged();
+        updateSel();
+        save(false);
+    }
+
+    /** 只勾选「还没测过」或「测出失败（D）」的站点——续测/重测失败站点用。 */
+    private void selectUntested() {
+        List<Site> sites = loader.getSites();
+        if (sites.isEmpty()) return;
+        int n = 0;
+        for (Site s : sites) {
+            boolean want = !s.tested() || "D".equals(s.getGrade());
+            s.setSelected(want);
+            if (want) n++;
+        }
+        adapter.notifyDataSetChanged();
+        updateSel();
+        toast("已选 " + n + " 个未测/失败的站点");
     }
 
     // ---------------- 测活 ----------------
 
     private void doRun() throws Exception {
-        final List<Site> sites = loader.getSites();
-        if (sites.isEmpty()) throw new Exception("先加载或导入配置");
+        final List<Site> all = loader.getSites();
+        if (all.isEmpty()) throw new Exception("先加载或导入配置");
+        final List<Site> sites = new ArrayList<>();
+        for (Site s : all) if (s.isSelected()) sites.add(s);
+        if (sites.isEmpty()) throw new Exception("没有勾选任何站点：点站点左侧复选框，或点「全选」");
         final int depth = depth();
         stopRequested = false;
+        runSites = sites;
         SiteLoader.get().clear();
         long t0 = System.currentTimeMillis();
         for (Site s : sites) {
@@ -221,16 +279,33 @@ public class MainActivity extends AppCompatActivity {
             s.setElapsedMs(-1);
         }
         final int total = sites.size();
-        runOnUiThread(() -> adapter.notifyDataSetChanged());
+        runOnUiThread(() -> {
+            adapter.notifyDataSetChanged();
+            updateSel();
+        });
+
+        // jar 源共用同一个 jar：先预热下载，避免 6 个线程抢锁串行等待
+        String warm = null;
+        for (Site s : sites) {
+            if (s.kindLabel().equals("jar") && !TextUtils.isEmpty(s.getJar0())) {
+                warm = s.getJar0();
+                break;
+            }
+        }
+        if (warm != null && warm.startsWith("http")) {
+            progress("预取 jar（首次约 1-2MB，稍等）…");
+            SiteLoader.get().warmUp(warm);
+        }
 
         final AtomicInteger done = new AtomicInteger();
         final AtomicInteger alive = new AtomicInteger();
         final AtomicInteger failed = new AtomicInteger();
-        ExecutorService checkPool = Executors.newFixedThreadPool(CHECK_THREADS);
-        List<Future<?>> futures = new ArrayList<>();
+        final long[] lastSave = {System.currentTimeMillis()};
+        checkPool = Executors.newFixedThreadPool(CHECK_THREADS);
+        inflight.clear();
         try {
             for (final Site site : sites) {
-                futures.add(checkPool.submit(() -> {
+                Future<?> f = checkPool.submit(() -> {
                     if (stopRequested) return;
                     try {
                         Checker.check(site, depth);
@@ -243,21 +318,71 @@ public class MainActivity extends AppCompatActivity {
                     else alive.incrementAndGet();
                     runOnUiThread(() -> {
                         adapter.notifyItemChanged(site);
-                        tvProgress.setText(String.format("%d/%d · 可用 %d · %s [%s] %s",
-                                d, total, alive.get(), site.getName(), site.getGrade(), site.display()));
+                        if (running && !stopRequested) {
+                            tvProgress.setText(String.format("%d/%d · 可用 %d · %s [%s] %s",
+                                    d, total, alive.get(), site.getName(), site.getGrade(), site.display()));
+                        }
                     });
-                }));
+                    if (System.currentTimeMillis() - lastSave[0] > SAVE_INTERVAL_MS) {
+                        lastSave[0] = System.currentTimeMillis();
+                        save(false);
+                    }
+                });
+                inflight.add(f);
             }
         } finally {
             checkPool.shutdown();
         }
         while (!checkPool.isTerminated()) {
-            checkPool.awaitTermination(250, TimeUnit.MILLISECONDS);
+            if (stopRequested) break;   // 强制停止：不再等剩余超时
+            checkPool.awaitTermination(200, TimeUnit.MILLISECONDS);
         }
         double sec = (System.currentTimeMillis() - t0) / 1000.0;
-        String summary = String.format("完成：%d 站 · 可用 %d · 失败 %d · 深度%d · 用时 %.1fs%s",
-                total, alive.get(), failed.get(), depth, sec, stopRequested ? "（已停止）" : "");
-        runOnUiThread(() -> tvProgress.setText(summary));
+        int testedN = 0, untestedN = 0;
+        for (Site s : sites) {
+            if ("?".equals(s.getGrade())) untestedN++;
+            else testedN++;
+        }
+        final int fTested = testedN, fUntested = untestedN;
+        String summary = String.format("%s：勾选 %d 站 · 完成 %d · 未测 %d · 可用 %d · 失败 %d · 深度%d · 用时 %.1fs",
+                stopRequested ? "已强制停止" : "完成", total, fTested, fUntested, alive.get(), failed.get(), depth, sec);
+        runOnUiThread(() -> {
+            if (!running || !stopRequested) tvProgress.setText(summary);
+        });
+        save(false);
+    }
+
+    /** 强制停止：取消在飞任务 + 取消所有 HTTP 请求，不等超时。 */
+    private void doStop() {
+        if (!running) {
+            toast("当前没有测活任务");
+            return;
+        }
+        stopRequested = true;
+        for (Future<?> f : inflight) f.cancel(true);
+        inflight.clear();
+        try {
+            OkHttp.client().dispatcher().cancelAll();
+        } catch (Throwable ignored) {
+        }
+        ExecutorService cp = checkPool;
+        if (cp != null) cp.shutdownNow();
+        List<Site> sites = runSites;
+        int done = 0, rest = 0;
+        if (sites != null) {
+            for (Site s : sites) {
+                if ("?".equals(s.getGrade())) {
+                    s.setResult("已停止（未测）");
+                    rest++;
+                } else done++;
+            }
+        }
+        running = false;
+        adapter.notifyDataSetChanged();
+        updateSel();
+        tvProgress.setText(String.format("已强制停止：完成 %d · 未测 %d · 点「开始测活」只测勾选的站点即可续测", done, rest));
+        toast("已停止");
+        save(false);
     }
 
     // ---------------- 单站重测 ----------------
@@ -284,7 +409,75 @@ public class MainActivity extends AppCompatActivity {
                 adapter.notifyItemChanged(site);
                 tvProgress.setText(String.format("单测完成：%s [%s] %s", site.getName(), site.getGrade(), site.display()));
             });
+            save(false);
         });
+    }
+
+    // ---------------- 断点续测 ----------------
+
+    /** App 启动时若有上次未完成的快照，询问是否继续。 */
+    private void restoreState() {
+        pool.execute(() -> {
+            final JSONObject st = Store.load(this);
+            if (st == null) return;
+            final int depth = Math.max(1, Math.min(st.optInt("depth", 1), DEPTH_LABELS.length));
+            final String url = st.optString("url", "");
+            final boolean interrupted = st.optBoolean("interrupted", false);
+            JSONArray arr = st.optJSONArray("sites");
+            if (arr == null || arr.length() == 0) return;
+            final List<Site> list = new ArrayList<>();
+            int tested = 0;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                Site s = Site.fromState(o);
+                if (s.tested()) tested++;
+                list.add(s);
+            }
+            if (list.isEmpty()) return;
+            final int fTested = tested;
+            final int rest = list.size() - tested;
+            runOnUiThread(() -> new AlertDialog.Builder(this)
+                    .setTitle("继续上次任务")
+                    .setMessage(String.format("检测到上次的快照：共 %d 站，已完成 %d，未测 %d。\n深度：%s%s\n\n「继续测活」= 从断点接着测（离线可用，不必重新拉配置）",
+                            list.size(), fTested, rest, DEPTH_LABELS[depth - 1], interrupted ? "（上次未跑完）" : ""))
+                    .setPositiveButton("继续测活", (d, w) -> {
+                        applyRestored(list, depth, url, true);
+                        runTask(this::doRun);
+                    })
+                    .setNeutralButton("只看结果", (d, w) -> applyRestored(list, depth, url, false))
+                    .setNegativeButton("重新开始", (d, w) -> {
+                        Store.clear(this);
+                        toast("已清除快照");
+                    })
+                    .show());
+        });
+    }
+
+    private void applyRestored(List<Site> list, int depth, String url, boolean onlyUntested) {
+        loader.getSites().clear();
+        loader.getSites().addAll(list);
+        if (!TextUtils.isEmpty(url) && !url.equals("本地文件")) etConfig.setText(url);
+        spDepth.setSelection(Math.max(0, Math.min(depth - 1, DEPTH_LABELS.length - 1)));
+        for (Site s : list) s.setSelected(onlyUntested ? (!s.tested() || "D".equals(s.getGrade())) : true);
+        SiteLoader.get().clear();
+        adapter.setItems(loader.getSites());
+        updateSel();
+        int sel = 0;
+        for (Site s : list) if (s.isSelected()) sel++;
+        tvProgress.setText(String.format("已恢复 %d 站快照（已选 %d）· 点「开始测活」继续", list.size(), sel));
+    }
+
+    /** 保存任务快照（写文件，可在后台线程调用）。 */
+    private void save(boolean ignored) {
+        try {
+            List<Site> copy = new ArrayList<>(loader.getSites());
+            if (copy.isEmpty()) return;
+            String url = etConfig == null ? "" : etConfig.getText().toString().trim();
+            int d = spDepth == null || spDepth.getSelectedItemPosition() < 0 ? 1 : spDepth.getSelectedItemPosition() + 1;
+            Store.save(this, url, d, running && !stopRequested, copy);
+        } catch (Throwable ignored2) {
+        }
     }
 
     // ---------------- 导出 ----------------
@@ -328,7 +521,7 @@ public class MainActivity extends AppCompatActivity {
         items[Ua.CANDIDATES.length] = "自定义…";
         new AlertDialog.Builder(this)
                 .setTitle("User-Agent（当前：" + Ua.current() + "）")
-                .setMessage("部分站点/接口会校验 UA，选一个可用的即可。拉取配置时也会自动逐个嗅探。")
+                .setMessage("部分站点/接口会校验 UA，选一个可用的即可。拉取配置与测活都会自动逐个嗅探。")
                 .setItems(items, (dlg, which) -> {
                     if (which == Ua.CANDIDATES.length) showUaInput();
                     else {
@@ -418,8 +611,10 @@ public class MainActivity extends AppCompatActivity {
     private void doClear() {
         loader.getSites().clear();
         SiteLoader.get().clear();
+        Store.clear(this);
         adapter.setItems(loader.getSites());
-        tvProgress.setText("已清空");
+        updateSel();
+        tvProgress.setText("已清空（含本地快照）");
     }
 
     private void showSiteDetail(Site site) {
@@ -473,5 +668,11 @@ public class MainActivity extends AppCompatActivity {
     private String msg(Throwable e) {
         String m = e.getMessage();
         return m == null || m.isEmpty() ? e.getClass().getSimpleName() : m;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        save(false);
     }
 }
