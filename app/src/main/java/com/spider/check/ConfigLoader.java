@@ -82,7 +82,15 @@ public class ConfigLoader {
             URI out = baseUri.resolve(rel);
             if (out.getScheme() == null) return rel;
             String s = out.toString();
-            return s.startsWith("file:///") ? s.substring("file://".length()) : s;
+            // Java 的 URI.resolve 对 file 输出的是 file:/path（单斜杠），
+            // 必须把 file:///、file://、file:/ 三种都归一成 /path 绝对路径，
+            // 否则 api 会以 "file:/" 形式传给运行时而无法识别本地文件。
+            if (s.startsWith("file:")) {
+                String p = s.substring("file:".length());
+                while (p.startsWith("//")) p = p.substring(1);
+                return p.startsWith("/") ? p : "/" + p;
+            }
+            return s;
         } catch (Throwable e) {
             return rel;
         }
