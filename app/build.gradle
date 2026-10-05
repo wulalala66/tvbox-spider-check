@@ -2,6 +2,10 @@ plugins {
     alias libs.plugins.android.application
 }
 
+// 固定签名 keystore：CI 用 KEYSTORE_PATH 环境变量（从 Secrets 还原），本地放 app/keystore.jks
+def keyFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
+def keyFileExists = keyFile.exists()
+
 android {
     namespace = 'com.spider.check'
 
@@ -11,20 +15,31 @@ android {
         applicationId "com.spider.check"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
-        versionCode 5
-        versionName "1.0.5"
+        versionCode 6
+        versionName "1.0.6"
     }
 
     signingConfigs {
         debug {
-            // CI 用 debug keystore 出可安装包
+            // 兜底：CI 未提供固定 keystore 时才用（签名会每次变化，不推荐）
+        }
+        release {
+            // 固定签名：CI 从 GitHub Secrets 还原 keystore（KEYSTORE_PATH 指向它），
+            // 本地也可放 app/keystore.jks。保证每次构建签名一致，升级无需卸载。
+            if (keyFileExists) {
+                storeFile keyFile
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         release {
             minifyEnabled = false
-            signingConfig = signingConfigs.debug
+            // 有固定 keystore 用它，否则退回 debug 签名
+            signingConfig = keyFileExists ? signingConfigs.release : signingConfigs.debug
         }
     }
 

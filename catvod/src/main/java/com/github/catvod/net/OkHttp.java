@@ -2,12 +2,14 @@ package com.github.catvod.net;
 
 import android.annotation.SuppressLint;
 
+import androidx.annotation.NonNull;
 import androidx.collection.ArrayMap;
 
 import com.github.catvod.net.interceptor.AuthInterceptor;
 import com.github.catvod.net.interceptor.RequestInterceptor;
 import com.github.catvod.net.interceptor.ResponseInterceptor;
 
+import java.io.IOException;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.Map;
@@ -22,6 +24,7 @@ import okhttp3.Call;
 import okhttp3.FormBody;
 import okhttp3.Headers;
 import okhttp3.HttpUrl;
+import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -40,9 +43,25 @@ public class OkHttp {
     private OkHttpClient client;
     private OkHttpClient player;
     private OkDns dns;
+    /** 全局 User-Agent（null = 用 OkHttp 默认）。部分站点会校验 UA，见 Ua 类。 */
+    private volatile String ua;
 
     public static OkHttp get() {
         return Loader.INSTANCE;
+    }
+
+    /** 当前全局 UA（null = OkHttp 默认）。 */
+    public static String ua() {
+        return get().ua;
+    }
+
+    /** 设置全局 UA：所有走 OkHttp 的请求（含 js/py 源内部 http）都会带上；显式指定过 UA 的请求不受影响。 */
+    public static synchronized void setUA(String ua) {
+        OkHttp o = get();
+        if (Objects.equals(ua, o.ua)) return;
+        o.ua = ua;
+        o.client = null;
+        o.player = null;
     }
 
     public static OkDns dns() {
@@ -190,7 +209,8 @@ public class OkHttp {
 
     private static OkHttpClient.Builder getBuilder() {
         OkProxySelector selector = selector();
-        OkHttpClient.Builder builder = new OkHttpClient.Builder().addInterceptor(requestInterceptor()).addInterceptor(authInterceptor()).addInterceptor(new ProxyRedirectInterceptor(selector)).addNetworkInterceptor(responseInterceptor()).connectTimeout(TIMEOUT, TimeUnit.MILLISECONDS).readTimeout(TIMEOUT, TimeUnit.MILLISECONDS).writeTimeout(TIMEOUT, TimeUnit.MILLISECONDS).dns(dns()).hostnameVerifier((hostname, session) -> true).sslSocketFactory(getSSLContext().getSocketFactory(), trustAllCertificates()).followRedirects(false);
+        String ua = get().ua;
+        OkHttpClient.Builder builder = new OkHttpClient.Builder().addInterceptor(new UaInterceptor(ua)).addInterceptor(requestInterceptor()).addInterceptor(authInterceptor()).addInterceptor(new ProxyRedirectInterceptor(selector)).addNetworkInterceptor(responseInterceptor()).connectTimeout(TIMEOUT, TimeUnit.MILLISECONDS).readTimeout(TIMEOUT, TimeUnit.MILLISECONDS).writeTimeout(TIMEOUT, TimeUnit.MILLISECONDS).dns(dns()).hostnameVerifier((hostname, session) -> true).sslSocketFactory(getSSLContext().getSocketFactory(), trustAllCertificates()).followRedirects(false);
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY);
         builder.proxyAuthenticator(authenticator());
         //builder.addNetworkInterceptor(logging);
@@ -233,6 +253,24 @@ public class OkHttp {
         authInterceptor().clear();
         requestInterceptor().clear();
         responseInterceptor().clear();
+    }
+
+    /** 注入全局 UA；请求已显式带 User-Agent 时不覆盖（供 UA 嗅探用）。 */
+    private static class UaInterceptor implements Interceptor {
+
+        private final String ua;
+
+        UaInterceptor(String ua) {
+            this.ua = ua;
+        }
+
+        @NonNull
+        @Override
+        public Response intercept(@NonNull Chain chain) throws IOException {
+            Request request = chain.request();
+            if (ua == null || ua.isEmpty() || request.header("User-Agent") != null) return chain.proceed(request);
+            return chain.proceed(request.newBuilder().header("User-Agent", ua).build());
+        }
     }
 
     private static class Loader {

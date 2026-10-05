@@ -97,6 +97,11 @@ public class MainActivity extends AppCompatActivity {
         });
         findViewById(R.id.btnExport).setOnClickListener(v -> doExport());
         findViewById(R.id.btnDiag).setOnClickListener(v -> runTask(this::doDiag));
+        // 长按「诊断」= UA 设置（部分接口校验 User-Agent）
+        findViewById(R.id.btnDiag).setOnLongClickListener(v -> {
+            showUaDialog();
+            return true;
+        });
         findViewById(R.id.btnClear).setOnClickListener(v -> doClear());
 
         importLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
@@ -315,9 +320,49 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(() -> toast("已导出 " + uri.getLastPathSegment()));
     }
 
+    // ---------------- UA 设置 ----------------
+
+    private void showUaDialog() {
+        String[] items = new String[Ua.CANDIDATES.length + 1];
+        System.arraycopy(Ua.CANDIDATES, 0, items, 0, Ua.CANDIDATES.length);
+        items[Ua.CANDIDATES.length] = "自定义…";
+        new AlertDialog.Builder(this)
+                .setTitle("User-Agent（当前：" + Ua.current() + "）")
+                .setMessage("部分站点/接口会校验 UA，选一个可用的即可。拉取配置时也会自动逐个嗅探。")
+                .setItems(items, (dlg, which) -> {
+                    if (which == Ua.CANDIDATES.length) showUaInput();
+                    else {
+                        Ua.apply(items[which]);
+                        toast("已设为 " + items[which]);
+                    }
+                })
+                .setNeutralButton("恢复默认", (dlg, w) -> {
+                    Ua.apply("");
+                    toast("已恢复 OkHttp 默认 UA");
+                })
+                .show();
+    }
+
+    private void showUaInput() {
+        EditText et = new EditText(this);
+        String cur = Ua.current();
+        et.setText(cur.startsWith("（") ? "" : cur);
+        et.setHint("例如 okhttp/3.12.13");
+        new AlertDialog.Builder(this)
+                .setTitle("自定义 User-Agent")
+                .setView(et)
+                .setPositiveButton("确定", (dlg, w) -> {
+                    Ua.apply(et.getText().toString());
+                    toast("已设为 " + Ua.current());
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     // ---------------- 诊断 ----------------
 
     private void doDiag() {
+        progress("诊断中…（含 UA 探测，稍等几秒）");
         StringBuilder sb = new StringBuilder();
         try {
             String s = OkHttp.string("https://www.baidu.com");
@@ -345,7 +390,17 @@ public class MainActivity extends AppCompatActivity {
         }
         int n = loader.getSites().size();
         sb.append("已加载站点：").append(n).append("\n");
-        sb.append("ABI：").append(android.os.Build.SUPPORTED_ABIS.length > 0 ? android.os.Build.SUPPORTED_ABIS[0] : "?").append("\n");
+        sb.append("UA：").append(Ua.current()).append("\n");
+        String cfgUrl = etConfig.getText().toString().trim();
+        if (cfgUrl.startsWith("http")) {
+            sb.append("\n【配置地址 UA 探测】\n").append(cfgUrl).append("\n");
+            int limit = Math.min(4, Ua.CANDIDATES.length);
+            for (int i = 0; i < limit; i++) {
+                sb.append("  ").append(Ua.CANDIDATES[i]).append(" → ").append(Ua.probe(cfgUrl, Ua.CANDIDATES[i])).append("\n");
+            }
+            sb.append("（部分接口校验 UA：长按「诊断」换 UA，点「加载」会自动逐个嗅探）");
+        }
+        sb.append("\nABI：").append(android.os.Build.SUPPORTED_ABIS.length > 0 ? android.os.Build.SUPPORTED_ABIS[0] : "?").append("\n");
         sb.append("Android：").append(android.os.Build.VERSION.RELEASE).append("（API ").append(android.os.Build.VERSION.SDK_INT).append("）");
         String text = sb.toString();
         runOnUiThread(() -> new AlertDialog.Builder(this)

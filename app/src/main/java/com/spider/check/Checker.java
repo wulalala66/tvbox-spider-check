@@ -4,7 +4,6 @@ import android.text.TextUtils;
 
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderNull;
-import com.github.catvod.net.OkHttp;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -58,6 +57,16 @@ public class Checker {
         }
     }
 
+    /**
+     * 接口拉取：部分站点/接口校验 User-Agent，这里走 Ua 的候选 UA 嗅探；
+     * 空内容（被拦/超时）视为失败并带上候选 UA 的逐条结果，便于定位。
+     */
+    private static String http(String url) throws Exception {
+        String s = Ua.text(url, 12000);
+        if (TextUtils.isEmpty(s)) throw new Exception("拉取为空（" + Ua.lastReason() + "）");
+        return s;
+    }
+
     /** 非 spider 源：type 0/1/4 的 http(s) JSON 接口（苹果 CMS / 自定义 API）。 */
     public static boolean isJsonCms(String api) {
         if (TextUtils.isEmpty(api)) return true;
@@ -71,7 +80,7 @@ public class Checker {
         String api = site.getApi();
         String body;
         try {
-            body = call(() -> OkHttp.string(api), T_HTTP, "接口");
+            body = call(() -> http(api), T_HTTP, "接口");
         } catch (Throwable e) {
             site.setGrade("D");
             site.setResult("接口请求失败：" + msg(e));
@@ -113,7 +122,7 @@ public class Checker {
             } else {
                 String url = join(api, "ac=videolist&t=" + firstTid + "&pg=1");
                 try {
-                    JSONObject c = toJson(call(() -> OkHttp.string(url), T_HTTP, "分类"));
+                    JSONObject c = toJson(call(() -> http(url), T_HTTP, "分类"));
                     JSONArray cl = c == null ? null : c.optJSONArray("list");
                     if (cl == null) cl = c == null ? null : c.optJSONArray("vod_list");
                     if (cl != null && cl.length() > 0) {
@@ -133,7 +142,7 @@ public class Checker {
             } else {
                 String url = join(api, "ac=detail&ids=" + firstId);
                 try {
-                    JSONObject d = toJson(call(() -> OkHttp.string(url), T_HTTP, "详情"));
+                    JSONObject d = toJson(call(() -> http(url), T_HTTP, "详情"));
                     JSONArray dl = d == null ? null : d.optJSONArray("list");
                     if (dl == null) dl = d == null ? null : d.optJSONArray("vod_list");
                     if (dl == null || dl.length() == 0) {

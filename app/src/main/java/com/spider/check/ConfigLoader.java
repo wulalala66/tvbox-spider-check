@@ -2,8 +2,6 @@ package com.spider.check;
 
 import android.text.TextUtils;
 
-import com.github.catvod.net.OkHttp;
-import com.github.catvod.utils.Crypto;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -34,10 +32,11 @@ public class ConfigLoader {
         return raw;
     }
 
-    /** 远程配置：拉文本后解析。 */
+    /** 远程配置：拉文本后解析。部分站点校验 UA，这里走 Ua 自动嗅探。 */
     public int load(String url) throws Exception {
         if (url.contains(";md5;")) url = url.split(";md5;")[0];
-        String text = OkHttp.string(url);
+        String text = Ua.text(url);
+        if (TextUtils.isEmpty(text)) throw new Exception("配置拉取失败：" + Ua.lastReason());
         return loadText(text, url);
     }
 
