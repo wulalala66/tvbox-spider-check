@@ -642,7 +642,7 @@ public class MainActivity extends AppCompatActivity {
             site.setDepth(depth);
             site.setElapsedMs(-1);
             runOnUiThread(() -> {
-                adapter.notifyItemChanged(site);
+                adapter.refresh(site);
                 tvProgress.setText("单测：" + site.getName() + "（深度" + depth + "）");
             });
             try {
