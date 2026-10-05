@@ -15,9 +15,16 @@ android {
         versionName "1.0.0"
     }
 
+    signingConfigs {
+        debug {
+            // CI 用 debug keystore 出可安装包
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled = false
+            signingConfig = signingConfigs.debug
         }
     }
 
